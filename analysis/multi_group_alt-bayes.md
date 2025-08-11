@@ -1,6 +1,6 @@
 # Probabilistic multi-group comparison of alpha diversity
 Rasmus Hindström
-2025-07-29
+2025-08-11
 
 - [0. Summary](#0-summary)
 - [1. Data preparation](#1-data-preparation)
@@ -12,14 +12,14 @@ Rasmus Hindström
   testing](#5-classical-approachs-to-multi-group-testing)
   - [5.1. ANOVA](#51-anova)
   - [5.2. Kruskal-Wallis](#52-kruskal-wallis)
-- [6. Conclusions](#6-conclusions)
+- [6. Benchmarking speed](#6-benchmarking-speed)
+- [7. Conclusions](#7-conclusions)
 
 # 0. Summary
 
 This report demonstrates the use and interpretation of a probabilisitc
-alternative to multi-group comparisons of alpha diversity. The basis is
-a multi-level model with a group-level effect, which is estimated using
-Bayesian estimation with the `brms` package.
+alternative to multi-group comparisons of alpha diversity. Group means
+are estimated using a linear model fit with the `brms` package.
 
 # 1. Data preparation
 
@@ -33,6 +33,8 @@ library(bayesplot)
 library(dunn.test)
 library(ggplot2)
 library(patchwork)
+library(rstatix)
+library(microbenchmark)
 ```
 
 ``` r
@@ -48,12 +50,13 @@ df <- as.data.frame(colData(tse))
 
 # 2. Model fitting
 
-The model is fitted using the `brm` function from the `brms` package.
-Reponse variable is the Shannon index, and the grouping variable is the
+The model is fit using the `brm` function from the `brms` package. The
+response variable is the Shannon index, and the grouping variable is the
 3 classes of `age`; `Adult`, `Middle_age`, and `Elderly`.
 
-The model is parametrized with the group `Adult` as the baseline to
-which others are compared to.
+The model is parametrized to model the group means directly, with no
+intercept. Groups are allowed unequal variance, and means are modeled
+from a t distrubtion. The shape parameter $\nu$ is estimated from data.
 
 Model definition is as follows:
 
@@ -62,11 +65,11 @@ y_{ik} \sim \text{t}(\nu, \mu_{ik}, \sigma_k)
 $$
 
 $$
-\mu_{ik} = \beta_0 + \beta_k
+\mu_{ik} = \beta_k
 $$
 
 $$
-\sigma_k = \gamma_0 + \gamma_k
+\sigma_k = \gamma_k
 $$
 
 *Default priors used by `brm()`*
@@ -84,50 +87,47 @@ $$
 $$
 
 ``` r
-start <- proc.time()
+# Model with no partial pooling 
 fit <- brm(
     formula = bf(
-        shannon ~ Age,
-        sigma ~ Age
+        shannon ~ 0 + Age,
+        sigma ~ 0 + Age
     ),
     data = df,
     family = student(),
-    iter = 4000,
-    chains = 4,
-    cores = 4
+    #control = list(adapt_delta = 0.9), # If divergence issues
+    algorithm = "sampling",
+    iter = 4000 
 )
-end <- proc.time()
-runTime_brm <- end - start
 ```
 
      Family: student 
       Links: mu = identity; sigma = log; nu = identity 
-    Formula: shannon ~ Age 
-             sigma ~ Age
+    Formula: shannon ~ 0 + Age 
+             sigma ~ 0 + Age
        Data: df (Number of observations: 58) 
       Draws: 4 chains, each with iter = 4000; warmup = 2000; thin = 1;
              total post-warmup draws = 8000
 
     Regression Coefficients:
                         Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
-    Intercept               1.46      0.14     1.18     1.73 1.00     9424     5770
-    sigma_Intercept        -0.45      0.17    -0.76    -0.12 1.00     8332     5887
-    AgeElderly             -0.14      0.27    -0.68     0.38 1.00     8612     5900
-    AgeMiddle_age          -0.57      0.19    -0.94    -0.18 1.00     9629     5904
-    sigma_AgeElderly        0.34      0.25    -0.13     0.83 1.00     8496     6407
-    sigma_AgeMiddle_age    -0.26      0.25    -0.76     0.26 1.00     9142     6310
+    AgeAdult                1.46      0.14     1.19     1.73 1.00    10103     5418
+    AgeElderly              1.31      0.23     0.86     1.75 1.00    12062     5647
+    AgeMiddle_age           0.89      0.14     0.63     1.16 1.00    11480     6100
+    sigma_AgeAdult         -0.45      0.17    -0.78    -0.11 1.00    11057     5783
+    sigma_AgeElderly       -0.11      0.18    -0.44     0.28 1.00    11653     5937
+    sigma_AgeMiddle_age    -0.71      0.20    -1.07    -0.30 1.00    10605     6413
 
     Further Distributional Parameters:
        Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
-    nu    24.33     14.47     5.88    60.72 1.00    10603     5646
+    nu    24.29     14.54     5.72    60.85 1.00     9847     6127
 
     Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
     and Tail_ESS are effective sample size measures, and Rhat is the potential
     scale reduction factor on split chains (at convergence, Rhat = 1).
 
 Interpreting the coefficients and 95% CI we can already make the
-observation that the groups `Adult` and `Middle age` differ. The
-`Middle age` group appears to have a lower Shannon diversity.
+observation that the groups appear to have rather different means.
 
 Further plotting is required to make conclusions on other pair wise
 comparisons.
@@ -139,17 +139,17 @@ comparisons.
 
 ``` r
 draws <- as_draws_df(fit)
-population <- c(draws$b_Intercept, draws$b_Intercept + draws$b_AgeMiddle_age,  draws$b_Intercept + draws$b_AgeElderly)
+population <- c(draws$b_AgeAdult, draws$b_AgeMiddle_age, draws$b_AgeElderly)
 pop_mean <- mean(population)
 
 plot_data <- data.frame(
     pop_mean = pop_mean,
-    adult = draws$b_Intercept,
-    adult_sd = draws$b_sigma_Intercept,
-    elderly = draws$b_Intercept + draws$b_AgeElderly,
-    elderly_sd = draws$b_sigma_Intercept + draws$b_sigma_AgeElderly,
-    middle_age = draws$b_Intercept + draws$b_AgeMiddle_age,
-    middle_age_sd = draws$b_sigma_Intercept + draws$b_sigma_AgeMiddle_age
+    adult = draws$b_AgeAdult,
+    adult_sd = draws$b_sigma_AgeAdult,
+    elderly = draws$b_AgeElderly,
+    elderly_sd = draws$b_sigma_AgeElderly,
+    middle_age = draws$b_AgeMiddle_age,
+    middle_age_sd = draws$b_sigma_AgeMiddle_age
 )
 
 p1 <- ggplot(data = plot_data) +
@@ -310,9 +310,9 @@ knitr::kable(probabilities, caption = "", format = "pipe")
 
 | Comparison | Prob_lesser | LogFC | LogFC_ci_lower | LogFC_ci_upper | cohens_d | d_ci_lower | d_ci_upper |
 |:---|---:|---:|---:|---:|---:|---:|---:|
-| Adult vs Elderly | 0.287875 | 0.1668741 | -0.2885604 | 0.6715804 | 0.4911642 | -0.9590143 | 2.136760 |
-| Adult vs Middle age | 0.002625 | 0.7183928 | 0.3130507 | 1.1503023 | 0.9875781 | 0.4123324 | 1.795043 |
-| Elderly vs Middle age | 0.051500 | 0.5515186 | -0.0119695 | 1.1022164 | 0.8849451 | -0.0145154 | 2.068362 |
+| Adult vs Elderly | 0.288625 | 0.1699242 | -0.2873575 | 0.6776858 | 0.4913407 | -0.9560068 | 2.116523 |
+| Adult vs Middle age | 0.002375 | 0.7166079 | 0.3087012 | 1.1672825 | 0.9880746 | 0.4054168 | 1.793339 |
+| Elderly vs Middle age | 0.054875 | 0.5466838 | -0.0157151 | 1.0914549 | 0.8666647 | -0.0233644 | 2.003627 |
 
 Notice, that these are not classical p-values, but posterior
 probabilities. The probabilities of observing a lower shannon index in
@@ -346,10 +346,7 @@ ANOVA would be the closest classical alternative. Assumptions in ANOVA
 are normality and equal variance.
 
 ``` r
-start <- proc.time() 
 res_anova <- aov(shannon ~ Age, data = df)
-end <- proc.time()
-runTime_anova <- end - start
 
 summary(res_anova)
 ```
@@ -368,7 +365,6 @@ which require adjusting p-values due to being post-hoc tests.
 
 ``` r
 # Pairwise t-test
-start <- proc.time()
 pairwise.t.test(df$shannon, df$Age, p.adjust = "fdr")
 ```
 
@@ -384,11 +380,7 @@ pairwise.t.test(df$shannon, df$Age, p.adjust = "fdr")
     P value adjustment method: fdr 
 
 ``` r
-end <- proc.time()
-runTime_pwt <- end - start
-
 # HSD
-start <- proc.time()
 TukeyHSD(aov(shannon ~ Age, data = df))
 ```
 
@@ -402,11 +394,6 @@ TukeyHSD(aov(shannon ~ Age, data = df))
     Elderly-Adult      -0.1477303 -0.6783059  0.38284533 0.7814198
     Middle_age-Adult   -0.5690925 -1.1182905 -0.01989461 0.0406666
     Middle_age-Elderly -0.4213623 -1.0060281  0.16330359 0.2011258
-
-``` r
-end <- proc.time()
-runTime_hsd <- end - start
-```
 
 Both post-hoc tests point to the significant difference between the
 groups `Adult` and `Middle age`. In the pairwise t-test the difference
@@ -422,7 +409,6 @@ significance has been tested. Kruskal-Wallis is typically paired with
 Dunn’s post-hoc test.
 
 ``` r
-start <- proc.time()
 kruskal.test(shannon ~ Age, df)
 ```
 
@@ -432,16 +418,10 @@ kruskal.test(shannon ~ Age, df)
     data:  shannon by Age
     Kruskal-Wallis chi-squared = 7.7239, df = 2, p-value = 0.02103
 
-``` r
-end <- proc.time()
-runTime_kw <- end - start
-```
-
 We get a p-value \< 0.05, so there are ‘significant’ differences within
 the groups.
 
 ``` r
-start <- proc.time()
 dunn.test(df$shannon, df$Age, method = "bh", kw = FALSE)
 ```
 
@@ -460,46 +440,215 @@ dunn.test(df$shannon, df$Age, method = "bh", kw = FALSE)
     alpha = 0.05
     Reject Ho if p <= alpha/2
 
-``` r
-end <- proc.time()
-runTime_dunn <- end - start
-```
-
 Significant p-values, after adjustment, are reported for the comparison
 between groups `Adult` and `Middle age`.
 
-# 6. Conclusions
+# 6. Benchmarking speed
+
+Using the `microbenchmark` package we can compare the raw speed of the
+methods.
 
 <details class="code-fold">
 <summary>Comparison of run times</summary>
 
 ``` r
-runTimes <- data.frame(
-    method = c(
-        "Bayesian estimation",
-        "ANOVA + t.test",
-        "ANOVA + HSD",
-        "Kruskal-Wallis + Dunn's"
-        ),
-    time_seconds = c(
-        runTime_brm["elapsed"],
-        runTime_anova["elapsed"] + runTime_pwt["elapsed"],
-        runTime_anova["elapsed"] + runTime_hsd["elapsed"],
-        runTime_kw["elapsed"] + runTime_dunn["elapsed"]
-        )
-)
+.bayes_est <- function(df) {
+    fit <- brm(
+    formula = bf(
+        shannon ~ 0 + Age,
+        sigma ~ 0 + Age
+    ),
+    data = df,
+    family = student(),
+    #control = list(adapt_delta = 0.9), # Can help with divergence issues
+    algorithm = "sampling",
+    iter = 4000
+    ) 
+    return(fit)
+}
 
-knitr::kable(runTimes, caption = "", format = "pipe")
+.anova <- function(df) {
+    fit <- aov(shannon ~ Age, data = df)
+    res_posthoc <- TukeyHSD(fit)
+    return(
+        list(
+            fit = fit,
+            post_hoc = res_posthoc
+        )
+    )
+}
+
+.kruskal_test <- function(df) {
+    fit <- kruskal.test(shannon ~ Age, df)
+    res_posthoc <- dunn.test(df$shannon, df$Age, method = "bh", kw = FALSE)
+    return(
+        list(
+            fit = fit,
+            post_hoc = res_posthoc
+        )
+    )
+}
+
+mb_res <- microbenchmark(
+    .bayes_est(df),
+    .anova(df),
+    .kruskal_test(df),
+    times = 1L, # adjust for more repetitions
+    unit = "seconds"
+)
 ```
 
 </details>
 
-| method                  | time_seconds |
-|:------------------------|-------------:|
-| Bayesian estimation     |       83.126 |
-| ANOVA + t.test          |        0.005 |
-| ANOVA + HSD             |        0.007 |
-| Kruskal-Wallis + Dunn’s |        0.006 |
+
+                               Comparison of x by group                            
+                                 (Benjamini-Hochberg)                              
+    Col Mean-|
+    Row Mean |      Adult    Elderly
+    ---------+----------------------
+     Elderly |   0.672628
+             |     0.2506
+             |
+    Middle_a |   2.733071   1.956873
+             |    0.0094*     0.0378
+
+    alpha = 0.05
+    Reject Ho if p <= alpha/2
+
+    Compiling Stan program...
+
+    Start sampling
+
+
+    SAMPLING FOR MODEL 'anon_model' NOW (CHAIN 1).
+    Chain 1: 
+    Chain 1: Gradient evaluation took 1.9e-05 seconds
+    Chain 1: 1000 transitions using 10 leapfrog steps per transition would take 0.19 seconds.
+    Chain 1: Adjust your expectations accordingly!
+    Chain 1: 
+    Chain 1: 
+    Chain 1: Iteration:    1 / 4000 [  0%]  (Warmup)
+    Chain 1: Iteration:  400 / 4000 [ 10%]  (Warmup)
+    Chain 1: Iteration:  800 / 4000 [ 20%]  (Warmup)
+    Chain 1: Iteration: 1200 / 4000 [ 30%]  (Warmup)
+    Chain 1: Iteration: 1600 / 4000 [ 40%]  (Warmup)
+    Chain 1: Iteration: 2000 / 4000 [ 50%]  (Warmup)
+    Chain 1: Iteration: 2001 / 4000 [ 50%]  (Sampling)
+    Chain 1: Iteration: 2400 / 4000 [ 60%]  (Sampling)
+    Chain 1: Iteration: 2800 / 4000 [ 70%]  (Sampling)
+    Chain 1: Iteration: 3200 / 4000 [ 80%]  (Sampling)
+    Chain 1: Iteration: 3600 / 4000 [ 90%]  (Sampling)
+    Chain 1: Iteration: 4000 / 4000 [100%]  (Sampling)
+    Chain 1: 
+    Chain 1:  Elapsed Time: 0.109 seconds (Warm-up)
+    Chain 1:                0.112 seconds (Sampling)
+    Chain 1:                0.221 seconds (Total)
+    Chain 1: 
+
+    SAMPLING FOR MODEL 'anon_model' NOW (CHAIN 2).
+    Chain 2: 
+    Chain 2: Gradient evaluation took 1.3e-05 seconds
+    Chain 2: 1000 transitions using 10 leapfrog steps per transition would take 0.13 seconds.
+    Chain 2: Adjust your expectations accordingly!
+    Chain 2: 
+    Chain 2: 
+    Chain 2: Iteration:    1 / 4000 [  0%]  (Warmup)
+    Chain 2: Iteration:  400 / 4000 [ 10%]  (Warmup)
+    Chain 2: Iteration:  800 / 4000 [ 20%]  (Warmup)
+    Chain 2: Iteration: 1200 / 4000 [ 30%]  (Warmup)
+    Chain 2: Iteration: 1600 / 4000 [ 40%]  (Warmup)
+    Chain 2: Iteration: 2000 / 4000 [ 50%]  (Warmup)
+    Chain 2: Iteration: 2001 / 4000 [ 50%]  (Sampling)
+    Chain 2: Iteration: 2400 / 4000 [ 60%]  (Sampling)
+    Chain 2: Iteration: 2800 / 4000 [ 70%]  (Sampling)
+    Chain 2: Iteration: 3200 / 4000 [ 80%]  (Sampling)
+    Chain 2: Iteration: 3600 / 4000 [ 90%]  (Sampling)
+    Chain 2: Iteration: 4000 / 4000 [100%]  (Sampling)
+    Chain 2: 
+    Chain 2:  Elapsed Time: 0.117 seconds (Warm-up)
+    Chain 2:                0.124 seconds (Sampling)
+    Chain 2:                0.241 seconds (Total)
+    Chain 2: 
+
+    SAMPLING FOR MODEL 'anon_model' NOW (CHAIN 3).
+    Chain 3: 
+    Chain 3: Gradient evaluation took 1.3e-05 seconds
+    Chain 3: 1000 transitions using 10 leapfrog steps per transition would take 0.13 seconds.
+    Chain 3: Adjust your expectations accordingly!
+    Chain 3: 
+    Chain 3: 
+    Chain 3: Iteration:    1 / 4000 [  0%]  (Warmup)
+    Chain 3: Iteration:  400 / 4000 [ 10%]  (Warmup)
+    Chain 3: Iteration:  800 / 4000 [ 20%]  (Warmup)
+    Chain 3: Iteration: 1200 / 4000 [ 30%]  (Warmup)
+    Chain 3: Iteration: 1600 / 4000 [ 40%]  (Warmup)
+    Chain 3: Iteration: 2000 / 4000 [ 50%]  (Warmup)
+    Chain 3: Iteration: 2001 / 4000 [ 50%]  (Sampling)
+    Chain 3: Iteration: 2400 / 4000 [ 60%]  (Sampling)
+    Chain 3: Iteration: 2800 / 4000 [ 70%]  (Sampling)
+    Chain 3: Iteration: 3200 / 4000 [ 80%]  (Sampling)
+    Chain 3: Iteration: 3600 / 4000 [ 90%]  (Sampling)
+    Chain 3: Iteration: 4000 / 4000 [100%]  (Sampling)
+    Chain 3: 
+    Chain 3:  Elapsed Time: 0.11 seconds (Warm-up)
+    Chain 3:                0.124 seconds (Sampling)
+    Chain 3:                0.234 seconds (Total)
+    Chain 3: 
+
+    SAMPLING FOR MODEL 'anon_model' NOW (CHAIN 4).
+    Chain 4: 
+    Chain 4: Gradient evaluation took 1.2e-05 seconds
+    Chain 4: 1000 transitions using 10 leapfrog steps per transition would take 0.12 seconds.
+    Chain 4: Adjust your expectations accordingly!
+    Chain 4: 
+    Chain 4: 
+    Chain 4: Iteration:    1 / 4000 [  0%]  (Warmup)
+    Chain 4: Iteration:  400 / 4000 [ 10%]  (Warmup)
+    Chain 4: Iteration:  800 / 4000 [ 20%]  (Warmup)
+    Chain 4: Iteration: 1200 / 4000 [ 30%]  (Warmup)
+    Chain 4: Iteration: 1600 / 4000 [ 40%]  (Warmup)
+    Chain 4: Iteration: 2000 / 4000 [ 50%]  (Warmup)
+    Chain 4: Iteration: 2001 / 4000 [ 50%]  (Sampling)
+    Chain 4: Iteration: 2400 / 4000 [ 60%]  (Sampling)
+    Chain 4: Iteration: 2800 / 4000 [ 70%]  (Sampling)
+    Chain 4: Iteration: 3200 / 4000 [ 80%]  (Sampling)
+    Chain 4: Iteration: 3600 / 4000 [ 90%]  (Sampling)
+    Chain 4: Iteration: 4000 / 4000 [100%]  (Sampling)
+    Chain 4: 
+    Chain 4:  Elapsed Time: 0.117 seconds (Warm-up)
+    Chain 4:                0.123 seconds (Sampling)
+    Chain 4:                0.24 seconds (Total)
+    Chain 4: 
+
+<details class="code-fold">
+<summary>Comparison of run times</summary>
+
+``` r
+mb_res
+```
+
+</details>
+
+    Unit: seconds
+                  expr          min           lq         mean       median
+        .bayes_est(df) 52.044895446 52.044895446 52.044895446 52.044895446
+            .anova(df)  0.003202883  0.003202883  0.003202883  0.003202883
+     .kruskal_test(df)  0.001787306  0.001787306  0.001787306  0.001787306
+               uq          max neval
+     52.044895446 52.044895446     1
+      0.003202883  0.003202883     1
+      0.001787306  0.001787306     1
+
+It is clear that the classical methods are orders of magnitude faster
+then the bayesian model. This highlights one of the main limitations of
+bayesian or probabilistic methods, the need for more computational
+resources to run the sampler. In addition the `brms` package generates
+and compiles the model into stan code. Using the `rstanarm` package
+might offer speed benefits, due to it relying on precompiled stan
+models. However, this sacrifces the flexibility and user-friendly
+interface of `brms`.
+
+# 7. Conclusions
 
 Although the methods are in aggreement that the significant outlier is
 the `Middle age` group. The classical methods are only able to provide a

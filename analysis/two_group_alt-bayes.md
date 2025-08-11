@@ -1,12 +1,14 @@
 # Probabilistic alternative to 2 group t-test
 Rasmus Hindström
-2025-07-24
+2025-08-11
 
 - [0. Summary](#0-summary)
 - [1. Data preparation](#1-data-preparation)
 - [2. Bayesian estimation](#2-bayesian-estimation)
   - [2.1. Model diagnostics](#21-model-diagnostics)
+  - [2.2. Inference](#22-inference)
 - [3. Welch t-test](#3-welch-t-test)
+- [4. Conclusions](#4-conclusions)
 - [Bibliography](#bibliography)
 - [Session Info](#session-info)
 
@@ -41,6 +43,7 @@ library(mia)
 library(dplyr)
 library(brms)
 library(bayesplot)
+library(rstatix)
 ```
 
 ``` r
@@ -104,14 +107,14 @@ summary(fit)
 
     Regression Coefficients:
                     Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
-    Intercept           1.26      0.17     0.94     1.58 1.00     7495     5252
-    sigma_Intercept    -0.21      0.15    -0.49     0.09 1.00     8095     5705
-    DietVeg            -0.02      0.20    -0.41     0.39 1.00     7501     6305
-    sigma_DietVeg      -0.25      0.20    -0.65     0.15 1.00     8141     5802
+    Intercept           1.26      0.16     0.94     1.59 1.00     7916     5105
+    sigma_Intercept    -0.22      0.15    -0.50     0.09 1.00     8561     5718
+    DietVeg            -0.02      0.20    -0.42     0.38 1.00     8053     5756
+    sigma_DietVeg      -0.25      0.21    -0.65     0.16 1.00     8865     6020
 
     Further Distributional Parameters:
        Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
-    nu    24.03     14.33     5.56    60.15 1.00     7839     4974
+    nu    23.88     14.05     5.72    58.12 1.00     7829     5025
 
     Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
     and Tail_ESS are effective sample size measures, and Rhat is the potential
@@ -147,6 +150,47 @@ posterior predictive plot shows that the model is able to capture the
 observed data well enough. However, the two peaked nature of the data is
 not captured.
 
+## 2.2. Inference
+
+Inference can directly be made from the posterior draws.
+
+``` r
+draws <- as_draws_df(fit)
+post_mixed <- draws$b_Intercept
+post_veg <- draws$b_Intercept + draws$b_DietVeg
+
+# Probability of mixed > veg?
+p_mixed <- mean(post_mixed > post_veg)
+
+# Log2fc effect size?
+log2fc <- log2(post_mixed / post_veg)
+mean_log2fc <- mean(log2fc)
+ci_log2fc <- quantile(log2fc, probs = c(0.05, 0.95))
+
+cat("Prob(mixed > veg) = ", p_mixed)
+```
+
+    Prob(mixed > veg) =  0.53175
+
+``` r
+cat("\nMean fc: ", mean_log2fc)
+```
+
+
+    Mean fc:  0.01368749
+
+``` r
+cat("\nCI: ", ci_log2fc[1], " - ", ci_log2fc[2])
+```
+
+
+    CI:  -0.3808591  -  0.3915665
+
+Here we see a close to 50% probability that the mixed diet group has a
+higher mean shannon diversity then the vegetarian diet group. Also the
+95% credible interval covers zero. Across diet, Shannon index does not
+seem to differ in this data.
+
 # 3. Welch t-test
 
 Welch t-test frees the assumption of equal variances between the two
@@ -160,7 +204,8 @@ under the null hypothesis. The null hypothesis states that there is no
 difference between the two groups.
 
 ``` r
-t.test(shannon ~ Diet, data = df, var.equal = FALSE)
+tt_res <- t.test(formula = shannon ~ Diet, data = df, var.equal = FALSE)
+tt_res
 ```
 
 
@@ -176,13 +221,36 @@ t.test(shannon ~ Diet, data = df, var.equal = FALSE)
                1.270704            1.236754 
 
 The p-value suggests that there is no significant difference between the
-two groups. We fail to reject the null hypothesis.
+two groups. Also the 95% confidence interval covers zero. We fail to
+reject the null hypothesis, but cannot make probabilistic statements.
+
+``` r
+d <- cohens_d(
+    data = df,
+    formula = shannon ~ Diet
+)
+
+cat("Cohen's D: ", d$effsize, "\n")
+```
+
+    Cohen's D:  0.04571875 
+
+In addition, the effect size is negligible.
+
+# 4. Conclusions
+
+Using a probabilisitic framework comparing means give comperable results
+to the classical Welch t-test. However the inference is arguably more
+straight forward, and easier to grasp. Probabilistic statements are
+possible, and working with posterior draws is intuitive.
+
+The benefit of the probabilistic approach to group comparisons will
+become more clear, as we move to multi-group comparisons. The same
+framework is expandable and inference is similar. Unlike with classical
+tests, where careful consideration has to be made choice of test,
+post-hoc corrections, and their assumptions and interpretation.
 
 # Bibliography
-
-- Kruschke, J. K. (2013). Bayesian estimation supersedes the t test.
-  Journal of Experimental Psychology: General, 142(2), 573–603.
-  https://doi.org/10.1037/a0029146
 
 - Vuorre, Matti. 2017. “How to Compare Two Groups with Robust Bayesian
   Estimation in R.” January 2, 2017.
@@ -218,16 +286,17 @@ sessionInfo()
     [8] base     
 
     other attached packages:
-     [1] bayesplot_1.13.0                brms_2.22.0                    
-     [3] Rcpp_1.1.0                      dplyr_1.1.4                    
-     [5] mia_1.17.5                      TreeSummarizedExperiment_2.17.0
-     [7] Biostrings_2.77.2               XVector_0.49.0                 
-     [9] SingleCellExperiment_1.31.1     MultiAssayExperiment_1.35.3    
-    [11] SummarizedExperiment_1.39.1     Biobase_2.69.0                 
-    [13] GenomicRanges_1.61.1            Seqinfo_0.99.1                 
-    [15] IRanges_2.43.0                  S4Vectors_0.47.0               
-    [17] BiocGenerics_0.55.0             generics_0.1.4                 
-    [19] MatrixGenerics_1.21.0           matrixStats_1.5.0              
+     [1] rstatix_0.7.2                   bayesplot_1.13.0               
+     [3] brms_2.22.0                     Rcpp_1.1.0                     
+     [5] dplyr_1.1.4                     mia_1.17.5                     
+     [7] TreeSummarizedExperiment_2.17.1 Biostrings_2.77.2              
+     [9] XVector_0.49.0                  SingleCellExperiment_1.31.1    
+    [11] MultiAssayExperiment_1.35.6     SummarizedExperiment_1.39.1    
+    [13] Biobase_2.69.0                  GenomicRanges_1.61.1           
+    [15] Seqinfo_0.99.2                  IRanges_2.43.0                 
+    [17] S4Vectors_0.47.0                BiocGenerics_0.55.1            
+    [19] generics_0.1.4                  MatrixGenerics_1.21.0          
+    [21] matrixStats_1.5.0              
 
     loaded via a namespace (and not attached):
       [1] RColorBrewer_1.1-3          tensorA_0.36.2.1           
@@ -237,61 +306,63 @@ sessionInfo()
       [9] rmarkdown_2.29              fs_1.6.6                   
      [11] ragg_1.4.0                  vctrs_0.6.5                
      [13] DelayedMatrixStats_1.31.0   htmltools_0.5.8.1          
-     [15] S4Arrays_1.9.1              BiocBaseUtils_1.11.0       
+     [15] S4Arrays_1.9.1              BiocBaseUtils_1.11.2       
      [17] curl_6.4.0                  distributional_0.5.0       
-     [19] BiocNeighbors_2.3.1         cellranger_1.1.0           
-     [21] SparseArray_1.9.0           StanHeaders_2.32.10        
-     [23] parallelly_1.45.0           plyr_1.8.9                 
-     [25] DECIPHER_3.5.0              sandwich_3.1-1             
-     [27] emmeans_1.11.1              zoo_1.8-14                 
-     [29] igraph_2.1.4                lifecycle_1.0.4            
-     [31] pkgconfig_2.0.3             rsvd_1.0.5                 
-     [33] Matrix_1.7-3                R6_2.6.1                   
-     [35] fastmap_1.2.0               digest_0.6.37              
-     [37] ggnewscale_0.5.2            ps_1.9.1                   
-     [39] patchwork_1.3.1             scater_1.37.0              
-     [41] irlba_2.3.5.1               textshaping_1.0.1          
-     [43] vegan_2.7-1                 beachmat_2.25.1            
-     [45] labeling_0.4.3              abind_1.4-8                
-     [47] mgcv_1.9-3                  compiler_4.5.1             
-     [49] withr_3.0.2                 inline_0.3.21              
-     [51] backports_1.5.0             BiocParallel_1.43.4        
-     [53] viridis_0.6.5               DBI_1.2.3                  
-     [55] QuickJSR_1.8.0              pkgbuild_1.4.8             
-     [57] MASS_7.3-65                 DelayedArray_0.35.2        
-     [59] bluster_1.19.0              loo_2.8.0                  
-     [61] permute_0.9-8               tools_4.5.1                
-     [63] vipor_0.4.7                 beeswarm_0.4.0             
-     [65] ape_5.8-1                   glue_1.8.0                 
-     [67] callr_3.7.6                 nlme_3.1-168               
-     [69] gridtext_0.1.5              grid_4.5.1                 
-     [71] checkmate_2.3.2             cluster_2.1.8.1            
-     [73] reshape2_1.4.4              gtable_0.3.6               
-     [75] fillpattern_1.0.2           tzdb_0.5.0                 
-     [77] tidyr_1.3.1                 hms_1.1.3                  
-     [79] BiocSingular_1.25.0         ScaledMatrix_1.17.0        
-     [81] xml2_1.3.8                  ggrepel_0.9.6              
-     [83] pillar_1.11.0               stringr_1.5.1              
-     [85] yulab.utils_0.2.0           posterior_1.6.1            
-     [87] splines_4.5.1               ggtext_0.1.2               
-     [89] treeio_1.33.0               lattice_0.22-7             
-     [91] survival_3.8-3              tidyselect_1.2.1           
-     [93] DirichletMultinomial_1.51.0 scuttle_1.19.0             
-     [95] knitr_1.50                  gridExtra_2.3              
-     [97] V8_6.0.4                    xfun_0.52                  
-     [99] bridgesampling_1.1-2        rstan_2.32.7               
-    [101] rbiom_2.2.1                 stringi_1.8.7              
-    [103] lazyeval_0.2.2              yaml_2.3.10                
-    [105] evaluate_1.0.4              codetools_0.2-20           
-    [107] tibble_3.3.0                cli_3.6.5                  
-    [109] RcppParallel_5.1.10         xtable_1.8-4               
-    [111] systemfonts_1.2.3           processx_3.8.6             
-    [113] readxl_1.4.5                coda_0.19-4.1              
-    [115] parallel_4.5.1              rstantools_2.4.0           
-    [117] ggplot2_3.5.2               readr_2.1.5                
-    [119] Brobdingnag_1.2-9           sparseMatrixStats_1.21.0   
-    [121] decontam_1.29.0             viridisLite_0.4.2          
-    [123] mvtnorm_1.3-3               slam_0.1-55                
-    [125] tidytree_0.4.6              scales_1.4.0               
-    [127] purrr_1.0.4                 crayon_1.5.3               
-    [129] rlang_1.1.6                 multcomp_1.4-28            
+     [19] broom_1.0.9                 BiocNeighbors_2.3.1        
+     [21] cellranger_1.1.0            Formula_1.2-5              
+     [23] SparseArray_1.9.1           StanHeaders_2.32.10        
+     [25] parallelly_1.45.1           plyr_1.8.9                 
+     [27] DECIPHER_3.5.0              sandwich_3.1-1             
+     [29] emmeans_1.11.2              zoo_1.8-14                 
+     [31] igraph_2.1.4                lifecycle_1.0.4            
+     [33] pkgconfig_2.0.3             rsvd_1.0.5                 
+     [35] Matrix_1.7-3                R6_2.6.1                   
+     [37] fastmap_1.2.0               digest_0.6.37              
+     [39] ggnewscale_0.5.2            ps_1.9.1                   
+     [41] patchwork_1.3.1             scater_1.37.0              
+     [43] irlba_2.3.5.1               textshaping_1.0.1          
+     [45] vegan_2.7-1                 beachmat_2.25.3            
+     [47] labeling_0.4.3              abind_1.4-8                
+     [49] mgcv_1.9-3                  compiler_4.5.1             
+     [51] withr_3.0.2                 inline_0.3.21              
+     [53] backports_1.5.0             BiocParallel_1.43.4        
+     [55] carData_3.0-5               viridis_0.6.5              
+     [57] DBI_1.2.3                   QuickJSR_1.8.0             
+     [59] pkgbuild_1.4.8              MASS_7.3-65                
+     [61] DelayedArray_0.35.2         bluster_1.19.0             
+     [63] loo_2.8.0                   permute_0.9-8              
+     [65] tools_4.5.1                 vipor_0.4.7                
+     [67] beeswarm_0.4.0              ape_5.8-1                  
+     [69] glue_1.8.0                  callr_3.7.6                
+     [71] nlme_3.1-168                gridtext_0.1.5             
+     [73] grid_4.5.1                  checkmate_2.3.2            
+     [75] cluster_2.1.8.1             reshape2_1.4.4             
+     [77] gtable_0.3.6                fillpattern_1.0.2          
+     [79] tzdb_0.5.0                  tidyr_1.3.1                
+     [81] hms_1.1.3                   car_3.1-3                  
+     [83] BiocSingular_1.25.0         ScaledMatrix_1.17.0        
+     [85] xml2_1.3.8                  ggrepel_0.9.6              
+     [87] pillar_1.11.0               stringr_1.5.1              
+     [89] yulab.utils_0.2.0           posterior_1.6.1            
+     [91] splines_4.5.1               ggtext_0.1.2               
+     [93] treeio_1.33.0               lattice_0.22-7             
+     [95] survival_3.8-3              tidyselect_1.2.1           
+     [97] DirichletMultinomial_1.51.0 scuttle_1.19.0             
+     [99] knitr_1.50                  gridExtra_2.3              
+    [101] V8_6.0.4                    xfun_0.52                  
+    [103] bridgesampling_1.1-2        rstan_2.32.7               
+    [105] rbiom_2.2.1                 stringi_1.8.7              
+    [107] lazyeval_0.2.2              yaml_2.3.10                
+    [109] evaluate_1.0.4              codetools_0.2-20           
+    [111] tibble_3.3.0                cli_3.6.5                  
+    [113] RcppParallel_5.1.10         xtable_1.8-4               
+    [115] systemfonts_1.2.3           processx_3.8.6             
+    [117] readxl_1.4.5                coda_0.19-4.1              
+    [119] parallel_4.5.1              rstantools_2.4.0           
+    [121] ggplot2_3.5.2               readr_2.1.5                
+    [123] Brobdingnag_1.2-9           sparseMatrixStats_1.21.0   
+    [125] decontam_1.29.0             viridisLite_0.4.2          
+    [127] mvtnorm_1.3-3               slam_0.1-55                
+    [129] tidytree_0.4.6              scales_1.4.0               
+    [131] purrr_1.1.0                 crayon_1.5.3               
+    [133] rlang_1.1.6                 multcomp_1.4-28            
