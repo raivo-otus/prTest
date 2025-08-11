@@ -1,0 +1,443 @@
+---
+title: "Probabilistic multi-group comparison of alpha diversity"
+author: "Rasmus Hindström"
+date: last-modified
+format:
+    gfm:
+        toc: true
+---
+
+# 0. Summary
+
+This report demonstrates the use and interpretation of a probabilisitc alternative
+to multi-group comparisons of alpha diversity. Group means are estimated using
+a linear model fit with the `brms` package.
+
+
+# 1. Data preparation
+
+Preparing data from the `mia` package.
+
+```{r}
+#| label: load-libraries
+#| code-summary: Load required libraries
+#| echo: true
+#| output: false
+library(mia)
+library(dplyr)
+library(brms)
+library(bayesplot)
+library(dunn.test)
+library(ggplot2)
+library(patchwork)
+library(rstatix)
+library(microbenchmark)
+```
+
+```{r}
+#| label: prepare-data
+#| code-summary: prepare example data
+data("peerj13075", package = "mia")
+tse <- peerj13075
+tse <- addAlpha(
+    tse,
+    assay.type = "counts",
+    index = "shannon"
+)
+df <- as.data.frame(colData(tse))
+```
+
+# 2. Model fitting
+
+The model is fit using the `brm` function from the `brms` package.
+The response variable is the Shannon index, and the grouping variable is the 3 classes
+of `age`; `Adult`, `Middle_age`, and `Elderly`.
+
+The model is parametrized to model the group means directly, with no intercept.
+Groups are allowed unequal variance, and means are modeled from a t distrubtion.
+The shape parameter $\nu$ is estimated from data.
+
+Model definition is as follows:
+
+$$
+y_{ik} \sim \text{t}(\nu, \mu_{ik}, \sigma_k)
+$$
+
+$$
+\mu_{ik} = \beta_k
+$$
+
+$$
+\sigma_k = \gamma_k
+$$
+
+*Default priors used by `brm()`*
+
+$$
+\nu \sim \gamma(2, 0.1)
+$$
+$$
+\beta_0 \sim \text{t}(3, 1.3, 2.5)
+$$
+$$
+\gamma_0 \sim \text{t}(3, 0, 2.5)
+$$
+
+$$
+\beta_k, \gamma_k \sim \mathrm{Uniform}
+$$
+
+
+```{r}
+#| label: fit-model
+#| code-summary: Fit Bayesian model
+#| warning: false
+#| output: false 
+
+# Model with no partial pooling 
+fit <- brm(
+    formula = bf(
+        shannon ~ 0 + Age,
+        sigma ~ 0 + Age
+    ),
+    data = df,
+    family = student(),
+    #control = list(adapt_delta = 0.9), # If divergence issues
+    algorithm = "sampling",
+    iter = 4000 
+)
+```
+
+```{r}
+#| label: fit-summary
+#| echo: false
+#| output: true
+    
+summary(fit)
+```
+
+Interpreting the coefficients and 95% CI we can already make the observation
+that the groups appear to have rather different means.
+
+Further plotting is required to make conclusions on other pair wise comparisons.
+
+# 3. Posterior plotting
+
+```{r}
+#| label: plotting-post
+#| code-summary: Posterior plotting
+#| code-fold: true
+#| fig-height: 6
+#| fig-width: 12  
+  
+draws <- as_draws_df(fit)
+population <- c(draws$b_AgeAdult, draws$b_AgeMiddle_age, draws$b_AgeElderly)
+pop_mean <- mean(population)
+
+plot_data <- data.frame(
+    pop_mean = pop_mean,
+    adult = draws$b_AgeAdult,
+    adult_sd = draws$b_sigma_AgeAdult,
+    elderly = draws$b_AgeElderly,
+    elderly_sd = draws$b_sigma_AgeElderly,
+    middle_age = draws$b_AgeMiddle_age,
+    middle_age_sd = draws$b_sigma_AgeMiddle_age
+)
+
+p1 <- ggplot(data = plot_data) +
+    geom_density(aes(x = adult), fill = "blue", alpha = 0.5, color = "blue") +
+    geom_density(aes(x = middle_age), fill = "orange", alpha = 0.6, color = "orange") +
+    geom_density(aes(x = elderly), fill = "purple", alpha = 0.7, color = "purple") +
+    geom_vline(xintercept = plot_data$pop_mean, linetype = "dashed", color = "red", linewidth = 1) +
+    labs(
+        title = "Posterior Distributions of Group means",
+        x = "Shannon index",
+        y = "Density"
+    ) +
+    annotate(
+        "text", x = 2, y = 2.5,
+        label = "Blue: Adult\nOrange: Middle age\nPurple: Elderly"
+    ) +
+    theme_minimal()
+
+p2 <- ggplot(data = plot_data) +
+    geom_boxplot(aes(y = adult, x = 1), fill = "blue", alpha = 0.7, color = "black") +
+    geom_boxplot(aes(y = middle_age, x = 2), fill = "orange", alpha = 0.7, color = "black") +
+    geom_boxplot(aes(y = elderly, x = 3), fill = "purple", alpha = 0.7, color = "black") +
+    geom_hline(yintercept = plot_data$pop_mean, linetype = "dashed", color = "red", linewidth = 1) +
+    scale_x_continuous(
+        breaks = c(1, 2, 3),
+        labels = c("Adult", "Middle Age", "Elderly")
+    ) +
+    labs(
+        title = "Boxplots of Group Means",
+        x = "Group",
+        y = "Shannon Index"
+    ) +
+    theme_minimal()
+
+p1 + p2
+```
+
+From the plots we can infer groups are not similar. Particularly the 
+Middle aged (Orange) group appears to have a lower Shannon index. The boxplots 
+paint a clear picture of the higher overlap between the Adult and Edlerly group,
+while the Middle aged group differs. In both plots the red dashed line indicates 
+the total population posterior mean.
+
+Using the posterior distributions, we can make statements about the differences
+between the groups. In this context the probability of observing a lower Shannon index
+is appropriate, akin to a classical p-value.
+
+# 4. Quantify probabilities and effect sizes
+
+```{r}
+#| label: quantify-probabilities
+#| code-fold: true
+#| code-summary: Probabilities and Standardized Effect Size
+
+calc_cohenD_post <- function(mu_1, mu_2, sd_1, sd_2) {
+    # Calculates effect size from posterior draws
+    diff <- mu_1 - mu_2
+    pooled_sd <- sqrt((sd_1^2 + sd_2^2) / 2)
+    d <- diff / pooled_sd
+    mean_d <- mean(d)
+    ci_d <- quantile(d, probs = c(0.05, 0.95))
+    res <- list(
+        "d" = mean_d,
+        "ci" = ci_d
+    )
+    return(res)
+}
+
+calc_logfc_post <- function(mu_1, mu_2) {
+    # Calculates log fold change from posterior draws
+    logfc <- log2(mu_1 / mu_2)
+    mean_logfc <- mean(logfc)
+    ci_logfc <- quantile(logfc, probs = c(0.05, 0.95))
+    res <- list(
+        "logfc" = mean_logfc,
+        "ci" = ci_logfc
+    )
+    return(res)
+}
+
+# Calculate effect sizes
+logfc_adult_elderly <- calc_logfc_post(plot_data$adult, plot_data$elderly)
+logfc_adult_middleage <- calc_logfc_post(plot_data$adult, plot_data$middle_age)
+logfc_elderly_middleage <- calc_logfc_post(plot_data$elderly, plot_data$middle_age)
+
+cohenD_adult_elderly <- calc_cohenD_post(
+    plot_data$adult, 
+    plot_data$elderly, 
+    plot_data$adult_sd, 
+    plot_data$elderly_sd
+)
+cohenD_adult_middleage <- calc_cohenD_post(
+    plot_data$adult, 
+    plot_data$middle_age, 
+    plot_data$adult_sd, 
+    plot_data$middle_age_sd
+)
+cohenD_elderly_middleage <- calc_cohenD_post(
+    plot_data$elderly, 
+    plot_data$middle_age, 
+    plot_data$elderly_sd, 
+    plot_data$middle_age_sd
+)
+
+
+
+probabilities <- data.frame(
+    Comparison = c(
+        "Adult vs Elderly",
+        "Adult vs Middle age",
+        "Elderly vs Middle age"
+    ),
+    Prob_lesser = c(
+        prob_adult_elderly <- mean(plot_data$adult < plot_data$elderly),
+        prob_adult_middleage <- mean(plot_data$adult < plot_data$middle_age),
+        prob_elderly_middleage <- mean(plot_data$elderly < plot_data$middle_age)
+    ),
+    LogFC = c(
+        logfc_adult_elderly$logfc,
+        logfc_adult_middleage$logfc,
+        logfc_elderly_middleage$logfc
+    ),
+    LogFC_ci_lower = c(
+        logfc_adult_elderly$ci[1],
+        logfc_adult_middleage$ci[1],
+        logfc_elderly_middleage$ci[1]
+    ),
+    LogFC_ci_upper = c(
+        logfc_adult_elderly$ci[2],
+        logfc_adult_middleage$ci[2],
+        logfc_elderly_middleage$ci[2]
+    ),
+    cohens_d = c(
+        cohenD_adult_elderly$d,
+        cohenD_adult_middleage$d,
+        cohenD_elderly_middleage$d
+    ),
+    d_ci_lower = c(
+        cohenD_adult_elderly$ci[1],
+        cohenD_adult_middleage$ci[1],
+        cohenD_elderly_middleage$ci[1]
+    ),
+    d_ci_upper = c(
+        cohenD_adult_elderly$ci[2],
+        cohenD_adult_middleage$ci[2],
+        cohenD_elderly_middleage$ci[2]
+    )
+)
+
+knitr::kable(probabilities, caption = "", format = "pipe")
+```
+
+Notice, that these are not classical p-values, but posterior probabilities.
+The probabilities of observing a lower shannon index in the first group of each
+comparison are reported. They have been calculated from the full posterior distribution.
+
+Effect size's are reported as Log Fold Change (LogFC) and standardized effect size (Cohen's d) with 95% CI's.
+
+Combining the probabilities and effect sizes, we can conclude that the
+`Middle age` group has a lower Shannon index compared to the `Adult` group. 
+With high probability (0.99) of observing a higher Shannon index in the `Adult` group
+and a higher then 95% chance of observing an positive effect size.
+
+The `Elderly` group has a similar pattern, with a high probabilty of observing a higher Shannon index than the `Middle age` group, but effect size 95% CI's overlap zero. This indicates that the difference is not as pronounced as with the `Adult` group. 
+
+Comparing the `Adult` and `Elderly` groups, the probability of observing a higher Shannon index in the `Adult` group is greater then 50%, but the effect size is small, with a 95% CI that overlaps zero. This indicates that the difference is not likely to be meaningful.
+
+# 5. Classical approachs to multi-group testing
+
+## 5.1. ANOVA
+
+ANOVA would be the closest classical alternative. Assumptions in ANOVA are
+normality and equal variance. 
+
+```{r}
+#| label: anova
+res_anova <- aov(shannon ~ Age, data = df)
+
+summary(res_anova)
+
+```
+
+Our result inidcates that Age is a significant predictor on explaining differences
+in the Shannon index. After observing a significant result, it is typical to further
+inspect the data with a pairwise t-test. Another option is
+Tukey's Honest Significant Difference (HSD). Both of which require adjusting p-values
+due to being post-hoc tests.
+
+```{r}
+#| label: pairwise-t-test
+
+# Pairwise t-test
+pairwise.t.test(df$shannon, df$Age, p.adjust = "fdr")
+
+# HSD
+TukeyHSD(aov(shannon ~ Age, data = df))
+``` 
+
+Both post-hoc tests point to the significant difference between the groups
+`Adult` and `Middle age`. In the pairwise t-test the difference between groups
+`Middle age` and `Elderly` approaches the significance boundry (p < 0.05).
+
+## 5.2. Kruskal-Wallis
+
+Another option to ANOVA is the Kruskal-Wallis test. Kruskal-Wallis relaxes the
+assumption of normality. However, It also needs to be paired with 
+a post-hoc test to infer paired differences after global significance has been tested.
+Kruskal-Wallis is typically paired with Dunn's post-hoc test.
+
+```{r}
+#| label: kruskal-test
+kruskal.test(shannon ~ Age, df)
+```
+
+We get a p-value < 0.05, so there are 'significant' differences within the groups.
+
+```{r}
+#| label: DUNN's test
+dunn.test(df$shannon, df$Age, method = "bh", kw = FALSE)
+```
+
+Significant p-values, after adjustment, are reported for the comparison between
+groups `Adult` and `Middle age`.
+
+# 6. Benchmarking speed
+
+Using the `microbenchmark` package we can compare the raw speed of the methods.
+
+```{r}
+#| label: table-comparison
+#| code-fold: true
+#| code-summary: Comparison of run times
+
+.bayes_est <- function(df) {
+    fit <- brm(
+    formula = bf(
+        shannon ~ 0 + Age,
+        sigma ~ 0 + Age
+    ),
+    data = df,
+    family = student(),
+    #control = list(adapt_delta = 0.9), # Can help with divergence issues
+    algorithm = "sampling",
+    iter = 4000
+    ) 
+    return(fit)
+}
+
+.anova <- function(df) {
+    fit <- aov(shannon ~ Age, data = df)
+    res_posthoc <- TukeyHSD(fit)
+    return(
+        list(
+            fit = fit,
+            post_hoc = res_posthoc
+        )
+    )
+}
+
+.kruskal_test <- function(df) {
+    fit <- kruskal.test(shannon ~ Age, df)
+    res_posthoc <- dunn.test(df$shannon, df$Age, method = "bh", kw = FALSE)
+    return(
+        list(
+            fit = fit,
+            post_hoc = res_posthoc
+        )
+    )
+}
+
+mb_res <- microbenchmark(
+    .bayes_est(df),
+    .anova(df),
+    .kruskal_test(df),
+    times = 1L, # adjust for more repetitions
+    unit = "seconds"
+)
+
+mb_res
+``` 
+
+It is clear that the classical methods are orders of magnitude faster then the 
+bayesian model. This highlights one of the main limitations of bayesian or probabilistic
+methods, the need for more computational resources to run the sampler. In addition
+the `brms` package generates and compiles the model into stan code. Using the `rstanarm`
+package might offer speed benefits, due to it relying on precompiled stan models. 
+However, this sacrifces the flexibility and user-friendly interface of `brms`. 
+
+# 7. Conclusions
+
+Although the methods are in aggreement that the significant outlier is
+the `Middle age` group. The classical methods are only able to provide a binary (yes/no)
+inference, in contrast to the much richer and intuitive information provided by the probabilistic
+method. 
+
+The main drawback of the probabilistic approach is the computational cost.
+Fitting a Bayesian model, with brms, requires compiling the model code and running
+the MCMC sampler. However this margin may shrink when datasets grow larger, as 
+probabilistic model fitting scales well larger data.

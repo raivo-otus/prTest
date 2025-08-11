@@ -1,0 +1,208 @@
+---
+title: "Probabilistic alternative to 2 group t-test"
+author: "Rasmus Hindström"
+date: last-modified
+format:
+    gfm:
+        toc: true
+---
+
+# 0. Summary
+
+This report demonstrates the use and interpretation of a probabilistic alternative
+to the two sample t-test. For a more expansive deep dive into the topic refer to
+Matti Vuorre's blog post [How to Compare Two Groups with Robust Bayesian Estimation in R](https://vuorre.com/posts/2017-01-02-how-to-compare-two-groups-with-robust-bayesian-estimation-using-r-stan-and-brms/).
+Much of which is adapted here to the context of microbiome research. 
+
+A common task in microbiome research is to compare alpha diversity between
+two or more groups. Often done with the t-test
+and concluded as a binary "significant or non-significant" result, the more
+rich inference provided by the probabilistic comparison will become apparent.
+Alpha diversity is a measure of the within sample diversity, and it is often computed
+as the number of observed species (richness), the Shannon index, or the Simpson index. 
+Here we demostrate comparisons of the Shannon index which takes into account abundance
+information, and is typically close to normally distributed.  
+
+# 1. Data preparation
+
+Here a dataset from the `mia` package is used to demonstrate the comparison and 
+interpretation differences between the two sample t-test (Welch t-test) and an
+alternative probabilistic approach with Bayesian estimation using the `brms` package.
+
+```{r}
+#| label: load-libraries
+#| code-summary: Load required libraries
+#| echo: true
+#| output: false 
+
+library(mia)
+library(dplyr)
+library(brms)
+library(bayesplot)
+library(rstatix)
+```
+
+```{r}
+#| label: prepare-data
+#| code-summary: prepare example data
+
+data("peerj13075", package = "mia")
+tse <- peerj13075
+
+tse <- addAlpha(
+    tse,
+    assay.type = "counts",
+    index = "shannon"
+)
+
+df <- as.data.frame(colData(tse))
+```
+
+# 2. Bayesian estimation
+
+As Matti Vuorre (2017) points out, the t-test is only a linear model under the hood.
+Extending this idea, we can formulate a probabilistic model and use `brms` to estimate
+the parameters of interest. In this case the group means and variances.
+Using a Student's t-distribution and estimating $\nu$ allows for a more robust model
+that is less sensitive to outliers.
+
+$$y_{ik} \sim \mathcal{T}(\nu, \mu_k, \sigma_k^2)$$
+
+$$ \mu_k = \beta_0 + \beta_k$$
+
+$$ \sigma_k^2 = \gamma_0 + \gamma_k$$
+
+```{r}
+#| label: bayesian-estimation
+#| code-summary: Perform Bayesian estimation
+
+# Fit Bayesian model (default priors)
+fit <- brm(
+    formula = bf(
+        shannon ~ Diet,
+        sigma ~ Diet
+    ),
+    data = df,
+    family = student,
+    iter = 4000,
+    chains = 4,
+    cores = 4
+)
+```
+
+```{r}
+#| label: model-summary
+  
+summary(fit)
+```
+
+A straight forward interpretation of the model can be made from the 95% credible
+intervals (CIs). Here our baseline group is the Mixed diet. The intercept for 
+DietVeg shows the difference in the Shannon index compared to the Mixed diet. 
+
+The CI for the intercept of DietVeg indicates that the difference between the 
+two groups is likely to not be meaningful, as the CI includes 0. 
+
+## 2.1. Model diagnostics
+
+```{r}
+#| label: model-diagnostics
+#| code-summary: Diagnostics plots 
+plot(fit)
+pp_check(fit, ndraws = 50)
+```
+
+The model summary shows non-pathogenic Rhat values, indicating that the chains have converged.
+Effective sample sizes are sufficiently high (> 1000) for each parameter.
+Chains are well mixed in the traceplots.
+The posterior predictive plot shows that the model is able to capture the observed data well enough.
+However, the two peaked nature of the data is not captured.
+
+## 2.2. Inference
+
+Inference can directly be made from the posterior draws. 
+
+```{r}
+draws <- as_draws_df(fit)
+post_mixed <- draws$b_Intercept
+post_veg <- draws$b_Intercept + draws$b_DietVeg
+
+# Probability of mixed > veg?
+p_mixed <- mean(post_mixed > post_veg)
+
+# Log2fc effect size?
+log2fc <- log2(post_mixed / post_veg)
+mean_log2fc <- mean(log2fc)
+ci_log2fc <- quantile(log2fc, probs = c(0.05, 0.95))
+
+cat("Prob(mixed > veg) = ", p_mixed)
+cat("\nMean fc: ", mean_log2fc)
+cat("\nCI: ", ci_log2fc[1], " - ", ci_log2fc[2])
+```
+
+Here we see a close to 50% probability that the mixed diet group has a higher mean
+shannon diversity then the vegetarian diet group. Also the 95% credible interval
+covers zero. Across diet, Shannon index does not seem to differ in this data.
+
+# 3. Welch t-test
+
+Welch t-test frees the assumption of equal variances between the two groups.
+It retains the assumption of normality.
+
+In essence the t-test compares the means of two groups, and returns a p-value
+indicating the probability of observing the data if the null hypothesis is true.
+The p-value is computed as the probability of observing a t-statistic
+as extreme as the one computed from the data, under the null hypothesis.
+The null hypothesis states that there is no difference between the two groups.
+
+```{r}
+#| label: welch-t-test
+#| code-summary: Perform Welch t-test
+
+tt_res <- t.test(formula = shannon ~ Diet, data = df, var.equal = FALSE)
+tt_res
+```
+
+The p-value suggests that there is no significant difference between the two groups.
+Also the 95% confidence interval covers zero.
+We fail to reject the null hypothesis, but cannot make probabilistic statements.
+
+```{r}
+d <- cohens_d(
+    data = df,
+    formula = shannon ~ Diet
+)
+
+cat("Cohen's D: ", d$effsize, "\n")
+```
+
+In addition, the effect size is negligible.
+
+# 4. Conclusions
+
+Using a probabilisitic framework comparing means give comperable results to the
+classical Welch t-test. However the inference is arguably more straight forward,
+and easier to grasp. Probabilistic statements are possible, and working with
+posterior draws is intuitive.
+
+The benefit of the probabilistic approach to group comparisons will become more clear,
+as we move to multi-group comparisons. The same framework is expandable and 
+inference is similar. Unlike with classical tests, where careful consideration has to
+be made choice of test, post-hoc corrections, and their assumptions and interpretation. 
+
+
+# Bibliography
+
+- Vuorre, Matti. 2017. “How to Compare Two Groups with Robust Bayesian Estimation in R.” January 2, 2017. [https://vuorre.com/posts/2017-01-02-how-to-compare-two-groups-with-robust-bayesian-estimation-using-r-stan-and-brms/](https://vuorre.com/posts/2017-01-02-how-to-compare-two-groups-with-robust-bayesian-estimation-using-r-stan-and-brms/).
+
+# Session Info
+
+```{r}
+#| label: session-info
+
+sessionInfo()
+``` 
+
+
+
+
