@@ -94,19 +94,24 @@ $$
 #| warning: false
 #| output: false 
 
-# Model with no partial pooling 
+# Model with partial pooling 
 fit <- brm(
     formula = bf(
-        shannon ~ 0 + Age,
-        sigma ~ 0 + Age
+        shannon ~ 1 + (1 | Age),
+        sigma ~ 1 + (1 | Age)
     ),
     data = df,
     family = student(),
-    #control = list(adapt_delta = 0.9), # If divergence issues
+    control = list(adapt_delta = 0.99), # If divergence issues
     algorithm = "sampling",
-    iter = 4000 
+    iter = 8000 
 )
 ```
+
+*Note: When working with bayesian models, sampling diagnostics are important to caress*
+*the sampler to provide reliable posteriors. Here increasing adept_delta and the iterations*
+*(length of chains) was required to get more stable estimates. Group level structures and*
+*unequal variances are notoriously difficult to sample.*
 
 ```{r}
 #| label: fit-summary
@@ -117,7 +122,7 @@ summary(fit)
 ```
 
 Interpreting the coefficients and 95% CI we can already make the observation
-that the groups appear to have rather different means.
+that the groups have noticable differences in means.
 
 Further plotting is required to make conclusions on other pair wise comparisons.
 
