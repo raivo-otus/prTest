@@ -18,7 +18,8 @@ workflow to follow.
 ```{r}
 #| label: package-installation
 #| eval: false
-#| echo: false  
+#| echo: true
+#| output: false
 
 packages <- c(
     "bayesplot",
@@ -41,12 +42,13 @@ if (!requireNamespace(bioc_pkg, quietly = TRUE)) {
 
 ```{r}
 #| label: load-libraries
-#| echo: false
+#| echo: true
+#| output: false
 
 library(bayesplot)
 library(brms)
 library(dplyr)
-library(ggplot2)  
+library(ggplot2)
 library(mia)
 ```
 

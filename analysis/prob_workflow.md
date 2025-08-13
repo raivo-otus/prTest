@@ -21,192 +21,33 @@ recommended workflow to follow.
 
 # 1. Install and load packages
 
-    This is bayesplot version 1.13.0
-
-    - Online documentation and vignettes at mc-stan.org/bayesplot
-
-    - bayesplot theme set to bayesplot::theme_default()
-
-       * Does _not_ affect other ggplot2 plots
-
-       * See ?bayesplot_theme_set for details on theme setting
-
-    Loading required package: Rcpp
-
-    Loading 'brms' package (version 2.22.0). Useful instructions
-    can be found by typing help('brms'). A more detailed introduction
-    to the package is available through vignette('brms_overview').
-
-
-    Attaching package: 'brms'
-
-    The following object is masked from 'package:bayesplot':
-
-        rhat
-
-    The following object is masked from 'package:stats':
-
-        ar
-
-
-    Attaching package: 'dplyr'
-
-    The following objects are masked from 'package:stats':
-
-        filter, lag
-
-    The following objects are masked from 'package:base':
-
-        intersect, setdiff, setequal, union
-
-    Loading required package: MultiAssayExperiment
-
-    Loading required package: SummarizedExperiment
-
-    Loading required package: MatrixGenerics
-
-    Loading required package: matrixStats
-
-
-    Attaching package: 'matrixStats'
-
-    The following object is masked from 'package:dplyr':
-
-        count
-
-
-    Attaching package: 'MatrixGenerics'
-
-    The following objects are masked from 'package:matrixStats':
-
-        colAlls, colAnyNAs, colAnys, colAvgsPerRowSet, colCollapse,
-        colCounts, colCummaxs, colCummins, colCumprods, colCumsums,
-        colDiffs, colIQRDiffs, colIQRs, colLogSumExps, colMadDiffs,
-        colMads, colMaxs, colMeans2, colMedians, colMins, colOrderStats,
-        colProds, colQuantiles, colRanges, colRanks, colSdDiffs, colSds,
-        colSums2, colTabulates, colVarDiffs, colVars, colWeightedMads,
-        colWeightedMeans, colWeightedMedians, colWeightedSds,
-        colWeightedVars, rowAlls, rowAnyNAs, rowAnys, rowAvgsPerColSet,
-        rowCollapse, rowCounts, rowCummaxs, rowCummins, rowCumprods,
-        rowCumsums, rowDiffs, rowIQRDiffs, rowIQRs, rowLogSumExps,
-        rowMadDiffs, rowMads, rowMaxs, rowMeans2, rowMedians, rowMins,
-        rowOrderStats, rowProds, rowQuantiles, rowRanges, rowRanks,
-        rowSdDiffs, rowSds, rowSums2, rowTabulates, rowVarDiffs, rowVars,
-        rowWeightedMads, rowWeightedMeans, rowWeightedMedians,
-        rowWeightedSds, rowWeightedVars
-
-    Loading required package: GenomicRanges
-
-    Loading required package: stats4
-
-    Loading required package: BiocGenerics
-
-    Loading required package: generics
-
-
-    Attaching package: 'generics'
-
-    The following object is masked from 'package:dplyr':
-
-        explain
-
-    The following objects are masked from 'package:base':
-
-        as.difftime, as.factor, as.ordered, intersect, is.element, setdiff,
-        setequal, union
-
-
-    Attaching package: 'BiocGenerics'
-
-    The following object is masked from 'package:dplyr':
-
-        combine
-
-    The following objects are masked from 'package:stats':
-
-        IQR, mad, sd, var, xtabs
-
-    The following objects are masked from 'package:base':
-
-        anyDuplicated, aperm, append, as.data.frame, basename, cbind,
-        colnames, dirname, do.call, duplicated, eval, evalq, Filter, Find,
-        get, grep, grepl, is.unsorted, lapply, Map, mapply, match, mget,
-        order, paste, pmax, pmax.int, pmin, pmin.int, Position, rank,
-        rbind, Reduce, rownames, sapply, saveRDS, table, tapply, unique,
-        unsplit, which.max, which.min
-
-    Loading required package: S4Vectors
-
-
-    Attaching package: 'S4Vectors'
-
-    The following objects are masked from 'package:dplyr':
-
-        first, rename
-
-    The following object is masked from 'package:utils':
-
-        findMatches
-
-    The following objects are masked from 'package:base':
-
-        expand.grid, I, unname
-
-    Loading required package: IRanges
-
-
-    Attaching package: 'IRanges'
-
-    The following objects are masked from 'package:dplyr':
-
-        collapse, desc, slice
-
-    Loading required package: Seqinfo
-
-    Loading required package: Biobase
-
-    Welcome to Bioconductor
-
-        Vignettes contain introductory material; view with
-        'browseVignettes()'. To cite Bioconductor, see
-        'citation("Biobase")', and for packages 'citation("pkgname")'.
-
-
-    Attaching package: 'Biobase'
-
-    The following object is masked from 'package:MatrixGenerics':
-
-        rowMedians
-
-    The following objects are masked from 'package:matrixStats':
-
-        anyMissing, rowMedians
-
-    Loading required package: SingleCellExperiment
-
-    Loading required package: TreeSummarizedExperiment
-
-    Loading required package: Biostrings
-
-    Loading required package: XVector
-
-
-    Attaching package: 'Biostrings'
-
-    The following object is masked from 'package:base':
-
-        strsplit
-
-    This is mia version 1.17.5
-    - Online documentation and vignettes: https://microbiome.github.io/mia/
-    - Online book 'Orchestrating Microbiome Analysis (OMA)': https://microbiome.github.io/OMA/docs/devel/
-
-
-    Attaching package: 'mia'
-
-    The following objects are masked from 'package:dplyr':
-
-        full_join, inner_join, left_join, right_join
+``` r
+packages <- c(
+    "bayesplot",
+    "brms",
+    "dplyr",
+    "ggplot2",
+)
+
+to_install <- packages[!packages %in% installed.packages()[, "Package"]]
+if (length(to_install) > 0) {
+  install.packages(to_install)
+}
+
+bioc_pkg <- "mia"
+
+if (!requireNamespace(bioc_pkg, quietly = TRUE)) {
+  BiocManager::install(bioc_pkg)
+}
+```
+
+``` r
+library(bayesplot)
+library(brms)
+library(dplyr)
+library(ggplot2)
+library(mia)
+```
 
 # 2. Prepare data
 
@@ -284,16 +125,16 @@ summary(fit1)
 
     Regression Coefficients:
                         Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
-    AgeAdult                1.46      0.14     1.19     1.73 1.00     5897     3333
-    AgeElderly              1.31      0.23     0.87     1.77 1.00     5461     2140
-    AgeMiddle_age           0.89      0.13     0.62     1.15 1.00     4286     2815
-    sigma_AgeAdult         -0.45      0.17    -0.77    -0.12 1.00     4997     2937
-    sigma_AgeElderly       -0.11      0.18    -0.44     0.28 1.00     5040     3012
-    sigma_AgeMiddle_age    -0.71      0.20    -1.06    -0.29 1.00     5793     2772
+    AgeAdult                1.46      0.14     1.17     1.73 1.00     6013     3086
+    AgeElderly              1.31      0.23     0.85     1.75 1.00     5983     2876
+    AgeMiddle_age           0.89      0.13     0.63     1.15 1.00     5405     2488
+    sigma_AgeAdult         -0.44      0.17    -0.76    -0.10 1.00     5307     2864
+    sigma_AgeElderly       -0.12      0.19    -0.45     0.27 1.00     5935     3106
+    sigma_AgeMiddle_age    -0.71      0.20    -1.07    -0.27 1.00     6103     2859
 
     Further Distributional Parameters:
        Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
-    nu    24.04     13.90     6.26    59.57 1.00     4949     2741
+    nu    23.95     13.85     5.76    58.67 1.00     4626     2277
 
     Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
     and Tail_ESS are effective sample size measures, and Rhat is the potential
@@ -346,12 +187,12 @@ summary(fit2)
     Multilevel Hyperparameters:
     ~Age (Number of levels: 3) 
                         Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
-    sd(Intercept)           1.75      0.87     0.74     4.06 1.00     2560     4863
-    sd(sigma_Intercept)     0.78      0.57     0.21     2.32 1.00     2973     5126
+    sd(Intercept)           1.71      0.82     0.73     3.91 1.00     2694     4767
+    sd(sigma_Intercept)     0.76      0.56     0.20     2.22 1.00     2478     4323
 
     Further Distributional Parameters:
        Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
-    nu    25.50     14.87     6.39    63.34 1.00     9389     8518
+    nu    25.52     14.45     6.73    61.60 1.00     9249     8846
 
     Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
     and Tail_ESS are effective sample size measures, and Rhat is the potential
@@ -371,16 +212,16 @@ ranef(fit2)
     , , Intercept
 
                 Estimate Est.Error      Q2.5    Q97.5
-    Adult      1.4408922 0.1447409 1.1502943 1.724006
-    Elderly    1.2739779 0.2296565 0.8122614 1.726916
-    Middle_age 0.8798431 0.1464125 0.5850258 1.168177
+    Adult      1.4410165 0.1467619 1.1507533 1.726123
+    Elderly    1.2707304 0.2287900 0.8049843 1.718971
+    Middle_age 0.8804846 0.1469261 0.5861787 1.168962
 
     , , sigma_Intercept
 
                   Estimate Est.Error       Q2.5       Q97.5
-    Adult      -0.40188574 0.1661960 -0.7168476 -0.06183621
-    Elderly    -0.09785577 0.1780314 -0.4283673  0.27175229
-    Middle_age -0.61121179 0.2150387 -0.9964121 -0.15359631
+    Adult      -0.39876476 0.1679573 -0.7123822 -0.05995109
+    Elderly    -0.09570628 0.1762318 -0.4235525  0.26237812
+    Middle_age -0.60546891 0.2213776 -0.9999019 -0.12892360
 
 Notice that compiling the model takes some time, but refitting the model
 with `update()` is considerably faster. Switching to variational
@@ -402,12 +243,12 @@ loo(fit1, fit2)
     Computed from 4000 by 58 log-likelihood matrix.
 
              Estimate   SE
-    elpd_loo    -63.9  5.0
+    elpd_loo    -64.0  5.0
     p_loo         5.0  0.6
-    looic       127.8 10.1
+    looic       127.9 10.1
     ------
     MCSE of elpd_loo is 0.0.
-    MCSE and ESS estimates assume MCMC draws (r_eff in [0.9, 1.6]).
+    MCSE and ESS estimates assume MCMC draws (r_eff in [1.1, 1.7]).
 
     All Pareto k estimates are good (k < 0.7).
     See help('pareto-k-diagnostic') for details.
@@ -417,12 +258,12 @@ loo(fit1, fit2)
     Computed from 16000 by 58 log-likelihood matrix.
 
              Estimate  SE
-    elpd_loo    -64.0 4.7
+    elpd_loo    -64.1 4.6
     p_loo         4.5 0.6
-    looic       128.0 9.3
+    looic       128.2 9.3
     ------
     MCSE of elpd_loo is 0.0.
-    MCSE and ESS estimates assume MCMC draws (r_eff in [0.6, 1.1]).
+    MCSE and ESS estimates assume MCMC draws (r_eff in [0.5, 1.2]).
 
     All Pareto k estimates are good (k < 0.7).
     See help('pareto-k-diagnostic') for details.
@@ -527,6 +368,6 @@ knitr::kable(summary_tbl, type = "pipe")
 
 | comparison | prob_g1_gt_g2 | log2fc_mean | log2fc_lower | log2fc_upper |
 |:---|---:|---:|---:|---:|
-| b_AgeAdult vs b_AgeElderly | 0.71850 | 0.1691467 | -0.3689277 | 0.7996556 |
-| b_AgeAdult vs b_AgeMiddle_age | 0.99875 | 0.7189990 | 0.2352132 | 1.2972628 |
-| b_AgeElderly vs b_AgeMiddle_age | 0.94375 | 0.5498523 | -0.1350445 | 1.2249016 |
+| b_AgeAdult vs b_AgeElderly | 0.71875 | 0.1724800 | -0.3569727 | 0.8029285 |
+| b_AgeAdult vs b_AgeMiddle_age | 0.99775 | 0.7135719 | 0.2348709 | 1.2423672 |
+| b_AgeElderly vs b_AgeMiddle_age | 0.94150 | 0.5410919 | -0.1679112 | 1.2321783 |
