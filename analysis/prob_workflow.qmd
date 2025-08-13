@@ -25,8 +25,6 @@ packages <- c(
     "brms",
     "dplyr",
     "ggplot2",
-    "stringr",
-    "tidybayes"
 )
 
 to_install <- packages[!packages %in% installed.packages()[, "Package"]]
@@ -50,8 +48,6 @@ library(brms)
 library(dplyr)
 library(ggplot2)  
 library(mia)
-library(stringr)
-library(tidybayes)
 ```
 
 # 2. Prepare data
@@ -94,6 +90,7 @@ This type of parametrization is also slightly more efficient to sample.
 
 ```{r}
 #| label: no-pool-fit
+#| output: false 
 
 fit1 <- brm(
     formula = bf(
@@ -102,19 +99,25 @@ fit1 <- brm(
     ),
     data = df,
     family = student(),
-    algorithm = "sampling",
-    iter = 4000 
 )
+```
+
+```{r}
+#| label: no-pool-summary
+#| code-fold: true
+
+summary(fit1)  
 ```
 
 ## 3.2. Partial pooling model
 
 Fitting a hierachical model with partial pooling, provides shrinkage to correct
-for multiple testing. This type of model is harder to sample, and requires some 
-tuning to get the sampler to behave. 
+for multiple testing more strongly. This type of model is harder to sample, and
+requires some tuning to get the sampler to behave well. 
 
 ```{r}
 #| label: pool-fit
+#| output: false 
 
 fit2 <- brm(
     formula = bf(
@@ -123,11 +126,28 @@ fit2 <- brm(
     ),
     data = df,
     family = student(),
-    algorithm = "sampling",
-    control = list(adapt_delta = 0.9), # slightly tigher acceptance
-    iter = 8000 # longer chains
+)
+
+fit2 <- update(
+    fit2,
+    control = list(adapt_delta = 0.9), # Tighter acceptance
+    iter = 8000 # Longer chains
 )
 ```
+
+```{r}
+#| label: partial-pooling-summary
+#| code-fold: true 
+ 
+summary(fit2)
+
+# Random effects
+ranef(fit2)
+```
+
+Notice that compiling the model takes some time, but refitting the model with 
+`update()` is considerably faster. Switching to variational inference can bring
+even larger speed benefits over MCMC, but you sacrifice accuracy of the posterior.
 
 ## 3.3. Model comparison
 
@@ -140,9 +160,11 @@ using PSIS-LOO. This is the equivalent to LOO-CV in the classical paradigm.
 loo(fit1, fit2) 
 ```
 
-Model performance is equivalent. Looking at the `elpd_diff` the partial pooling
-model appears to edge out the no-pooling model. However, taken together with the 
-`se_diff` value differences in model performance is negible.
+Model performance is equivalent. `se_diff` values are larger then the `elpd_diff`, there is no indication of either model being better then the other on out-of-sample prediction. 
+
+I would argue that for our purpose, the no-pooling model is approriate when
+there are so few groups. The regularisation from the priors is enough, but when 
+there are more groups compared the partial pooling model would be favored.
 
 # 4. Plotting and inference
 
@@ -154,6 +176,7 @@ and make probabilistic statements or inference.
 
 ```{r}
 #| label: plotting
+#| warning: false 
 #| code-fold: true
 #| code-summary: Plot code 
 #| fig-height: 6
@@ -205,10 +228,27 @@ p1 + p2
 ## 4.2. Probabilistic inference
 
 ```{r}
-#| label: helper-functions
-#| echo: false
-#| code-fold: true
-#| code-summary: Helper functions
+#| label: table
 
+# Get pairwise comparisons
+comparisons <- combn(names(draws), 2, simplify = FALSE)
+
+summary_tbl <- lapply(comparisons, function(cols) {
+  g1 <- cols[1]
+  g2 <- cols[2]
+  
+  prob <- mean(draws[[g1]] > draws[[g2]])
+  log2fc_vals <- log2(draws[[g1]] / draws[[g2]])
+  
+  tibble(
+    comparison = paste(g1, "vs", g2),
+    prob_g1_gt_g2 = prob,
+    log2fc_mean = mean(log2fc_vals),
+    log2fc_lower = quantile(log2fc_vals, 0.025),
+    log2fc_upper = quantile(log2fc_vals, 0.975)
+  )
+}) %>% bind_rows
+
+knitr::kable(summary_tbl, type = "pipe")
 ```
 
