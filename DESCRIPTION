@@ -1,5 +1,5 @@
 Package: prTest
-Title: What the Package Does (One Line, Title Case)
+Title: Research compendium for probabilistic alternatives
 Version: 0.0.0.9000
 Authors@R: 
     person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
@@ -10,7 +10,8 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 URL: https://github.com/raivo-otus/prTest
 BugReports: https://github.com/raivo-otus/prTest/issues
-Imports: 
+Imports:
+    bayesplot,
     brms,
     ggplot2,
     mia,

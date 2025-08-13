@@ -1,0 +1,254 @@
+---
+title: "Probabilistic workflow for univariate group comparison"
+author: "Rasmus Hindström"
+date: last-modified
+format:
+    gfm:
+        toc: true
+---
+
+# 0. Introduction 
+
+Having established that probabilisic methods can be used as alternatives to 
+classical methods in univariate group comparison, we now prepare a recommended
+workflow to follow. 
+
+# 1. Install and load packages
+
+```{r}
+#| label: package-installation
+#| eval: false
+#| echo: false  
+
+packages <- c(
+    "bayesplot",
+    "brms",
+    "dplyr",
+    "ggplot2",
+)
+
+to_install <- packages[!packages %in% installed.packages()[, "Package"]]
+if (length(to_install) > 0) {
+  install.packages(to_install)
+}
+
+bioc_pkg <- "mia"
+
+if (!requireNamespace(bioc_pkg, quietly = TRUE)) {
+  BiocManager::install(bioc_pkg)
+}
+```
+
+```{r}
+#| label: load-libraries
+#| echo: false
+
+library(bayesplot)
+library(brms)
+library(dplyr)
+library(ggplot2)  
+library(mia)
+```
+
+# 2. Prepare data
+
+We work under the assumption that data is in a TSE -object. For more information on 
+microbiome data and use of TSE -objects refer to
+(Orchestrating Microbiome Analysis)[https://microbiome.github.io/OMA/docs/devel/index.html]
+
+For demonstration purposes we show the workflow with an example dataset contained
+in the `mia` -package.
+
+```{r}
+#| label: data-wrangling
+
+data("peerj13075", package = "mia")  
+tse <- peerj13075 
+
+# You may need to agglomerate your data refer to OMA
+#tse <- agglomerateByRank(tse, rank = "genus")
+
+tse <- addAlpha(
+    tse,
+    assay.type = "counts",
+    index = "shannon"
+)
+
+# Extracting the data into a dataframe for easier modeling
+df <- as.data.frame(colData(tse))
+
+str(df)
+```
+
+# 3. Fitting a probabilistic model
+
+## 3.1. No pooling model
+
+Without partial pooling we still get regularization from priors. The model is 
+parametrized to estimate the group means directly for straight forward comparison.
+This type of parametrization is also slightly more efficient to sample.
+
+```{r}
+#| label: no-pool-fit
+#| output: false 
+
+fit1 <- brm(
+    formula = bf(
+        shannon ~ 0 + Age,
+        sigma ~ 0 + Age
+    ),
+    data = df,
+    family = student(),
+)
+```
+
+```{r}
+#| label: no-pool-summary
+#| code-fold: true
+
+summary(fit1)  
+```
+
+## 3.2. Partial pooling model
+
+Fitting a hierachical model with partial pooling, provides shrinkage to correct
+for multiple testing more strongly. This type of model is harder to sample, and
+requires some tuning to get the sampler to behave well. 
+
+```{r}
+#| label: pool-fit
+#| output: false 
+
+fit2 <- brm(
+    formula = bf(
+        shannon ~ 0 + (1 | Age),
+        sigma ~ 0 + (1 | Age)
+    ),
+    data = df,
+    family = student(),
+)
+
+fit2 <- update(
+    fit2,
+    control = list(adapt_delta = 0.9), # Tighter acceptance
+    iter = 8000 # Longer chains
+)
+```
+
+```{r}
+#| label: partial-pooling-summary
+#| code-fold: true 
+ 
+summary(fit2)
+
+# Random effects
+ranef(fit2)
+```
+
+Notice that compiling the model takes some time, but refitting the model with 
+`update()` is considerably faster. Switching to variational inference can bring
+even larger speed benefits over MCMC, but you sacrifice accuracy of the posterior.
+
+## 3.3. Model comparison
+
+We can quickly compare model performance by aproximating out-of-sample preformance,
+using PSIS-LOO. This is the equivalent to LOO-CV in the classical paradigm. 
+
+```{r}
+#| label: model-comparison
+
+loo(fit1, fit2) 
+```
+
+Model performance is equivalent. `se_diff` values are larger then the `elpd_diff`, there is no indication of either model being better then the other on out-of-sample prediction. 
+
+I would argue that for our purpose, the no-pooling model is approriate when
+there are so few groups. The regularisation from the priors is enough, but when 
+there are more groups compared the partial pooling model would be favored.
+
+# 4. Plotting and inference
+
+We will proceed with the no-pooling model. Extracting the posterior draws,
+allows easy plotting to visualize differences, compute comparisons of interest,
+and make probabilistic statements or inference.
+
+## 4.1. Posterior plotting
+
+```{r}
+#| label: plotting
+#| warning: false 
+#| code-fold: true
+#| code-summary: Plot code 
+#| fig-height: 6
+#| fig-width: 12
+ 
+# Get the draws
+draws <- as_draws_df(fit1)
+draws <- draws %>%
+    select(starts_with(paste0("b_", "Age")))
+pop_mean <- mean(unlist(draws))
+
+# Density plot
+p1 <- ggplot(data = draws) +
+    geom_density(aes(x = b_AgeAdult), fill = "blue", alpha = 0.5, color = "blue") +
+    geom_density(aes(x = b_AgeMiddle_age), fill = "orange", alpha = 0.6, color = "orange") +
+    geom_density(aes(x = b_AgeElderly), fill = "purple", alpha = 0.7, color = "purple") +
+    geom_vline(xintercept = pop_mean, linetype = "dashed", color = "red", linewidth = 1) +
+    labs(
+        title = "Posterior Distributions of Group means",
+        x = "Shannon index",
+        y = "Density"
+    ) +
+    annotate(
+        "text", x = 2, y = 2.5,
+        label = "Blue: Adult\nOrange: Middle age\nPurple: Elderly"
+    ) +
+    theme_minimal()
+
+# Box plot
+p2 <- ggplot(data = draws) +
+    geom_boxplot(aes(y = b_AgeAdult, x = 1), fill = "blue", alpha = 0.7, color = "black") +
+    geom_boxplot(aes(y = b_AgeMiddle_age, x = 2), fill = "orange", alpha = 0.7, color = "black") +
+    geom_boxplot(aes(y = b_AgeElderly, x = 3), fill = "purple", alpha = 0.7, color = "black") +
+    geom_hline(yintercept = pop_mean, linetype = "dashed", color = "red", linewidth = 1) +
+    scale_x_continuous(
+        breaks = c(1, 2, 3),
+        labels = c("Adult", "Middle Age", "Elderly")
+    ) +
+    labs(
+        title = "Boxplots of Group Means",
+        x = "Group",
+        y = "Shannon Index"
+    ) +
+    theme_minimal()
+
+p1 + p2
+```
+
+## 4.2. Probabilistic inference
+
+```{r}
+#| label: table
+
+# Get pairwise comparisons
+comparisons <- combn(names(draws), 2, simplify = FALSE)
+
+summary_tbl <- lapply(comparisons, function(cols) {
+  g1 <- cols[1]
+  g2 <- cols[2]
+  
+  prob <- mean(draws[[g1]] > draws[[g2]])
+  log2fc_vals <- log2(draws[[g1]] / draws[[g2]])
+  
+  tibble(
+    comparison = paste(g1, "vs", g2),
+    prob_g1_gt_g2 = prob,
+    log2fc_mean = mean(log2fc_vals),
+    log2fc_lower = quantile(log2fc_vals, 0.025),
+    log2fc_upper = quantile(log2fc_vals, 0.975)
+  )
+}) %>% bind_rows
+
+knitr::kable(summary_tbl, type = "pipe")
+```
+
