@@ -284,16 +284,16 @@ summary(fit1)
 
     Regression Coefficients:
                         Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
-    AgeAdult                1.46      0.15     1.17     1.75 1.00     6334     2730
-    AgeElderly              1.31      0.22     0.89     1.75 1.00     5382     2662
-    AgeMiddle_age           0.90      0.14     0.62     1.18 1.00     5312     2515
-    sigma_AgeAdult         -0.45      0.16    -0.75    -0.11 1.00     5557     2854
-    sigma_AgeElderly       -0.11      0.18    -0.44     0.28 1.00     5080     2959
-    sigma_AgeMiddle_age    -0.71      0.20    -1.07    -0.27 1.00     5635     2862
+    AgeAdult                1.46      0.14     1.19     1.73 1.00     5897     3333
+    AgeElderly              1.31      0.23     0.87     1.77 1.00     5461     2140
+    AgeMiddle_age           0.89      0.13     0.62     1.15 1.00     4286     2815
+    sigma_AgeAdult         -0.45      0.17    -0.77    -0.12 1.00     4997     2937
+    sigma_AgeElderly       -0.11      0.18    -0.44     0.28 1.00     5040     3012
+    sigma_AgeMiddle_age    -0.71      0.20    -1.06    -0.29 1.00     5793     2772
 
     Further Distributional Parameters:
        Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
-    nu    24.24     14.54     5.65    60.60 1.00     4879     2791
+    nu    24.04     13.90     6.26    59.57 1.00     4949     2741
 
     Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
     and Tail_ESS are effective sample size measures, and Rhat is the potential
@@ -346,12 +346,12 @@ summary(fit2)
     Multilevel Hyperparameters:
     ~Age (Number of levels: 3) 
                         Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
-    sd(Intercept)           1.73      0.86     0.73     4.02 1.00     2720     3962
-    sd(sigma_Intercept)     0.76      0.55     0.21     2.22 1.00     3127     6023
+    sd(Intercept)           1.75      0.87     0.74     4.06 1.00     2560     4863
+    sd(sigma_Intercept)     0.78      0.57     0.21     2.32 1.00     2973     5126
 
     Further Distributional Parameters:
        Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
-    nu    25.61     14.72     6.64    62.58 1.00    10059     8456
+    nu    25.50     14.87     6.39    63.34 1.00     9389     8518
 
     Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
     and Tail_ESS are effective sample size measures, and Rhat is the potential
@@ -371,16 +371,16 @@ ranef(fit2)
     , , Intercept
 
                 Estimate Est.Error      Q2.5    Q97.5
-    Adult      1.4397865 0.1473100 1.1444998 1.726264
-    Elderly    1.2677900 0.2292560 0.8112987 1.717539
-    Middle_age 0.8796425 0.1476717 0.5813779 1.169977
+    Adult      1.4408922 0.1447409 1.1502943 1.724006
+    Elderly    1.2739779 0.2296565 0.8122614 1.726916
+    Middle_age 0.8798431 0.1464125 0.5850258 1.168177
 
     , , sigma_Intercept
 
                   Estimate Est.Error       Q2.5       Q97.5
-    Adult      -0.39954001 0.1652809 -0.7158165 -0.06501526
-    Elderly    -0.09580482 0.1770461 -0.4269630  0.26766440
-    Middle_age -0.60858026 0.2191166 -1.0017522 -0.13960889
+    Adult      -0.40188574 0.1661960 -0.7168476 -0.06183621
+    Elderly    -0.09785577 0.1780314 -0.4283673  0.27175229
+    Middle_age -0.61121179 0.2150387 -0.9964121 -0.15359631
 
 Notice that compiling the model takes some time, but refitting the model
 with `update()` is considerably faster. Switching to variational
@@ -402,12 +402,12 @@ loo(fit1, fit2)
     Computed from 4000 by 58 log-likelihood matrix.
 
              Estimate   SE
-    elpd_loo    -64.0  5.0
+    elpd_loo    -63.9  5.0
     p_loo         5.0  0.6
-    looic       128.0 10.0
+    looic       127.8 10.1
     ------
     MCSE of elpd_loo is 0.0.
-    MCSE and ESS estimates assume MCMC draws (r_eff in [1.0, 1.7]).
+    MCSE and ESS estimates assume MCMC draws (r_eff in [0.9, 1.6]).
 
     All Pareto k estimates are good (k < 0.7).
     See help('pareto-k-diagnostic') for details.
@@ -417,9 +417,9 @@ loo(fit1, fit2)
     Computed from 16000 by 58 log-likelihood matrix.
 
              Estimate  SE
-    elpd_loo    -64.1 4.7
-    p_loo         4.6 0.6
-    looic       128.2 9.3
+    elpd_loo    -64.0 4.7
+    p_loo         4.5 0.6
+    looic       128.0 9.3
     ------
     MCSE of elpd_loo is 0.0.
     MCSE and ESS estimates assume MCMC draws (r_eff in [0.6, 1.1]).
@@ -527,6 +527,6 @@ knitr::kable(summary_tbl, type = "pipe")
 
 | comparison | prob_g1_gt_g2 | log2fc_mean | log2fc_lower | log2fc_upper |
 |:---|---:|---:|---:|---:|
-| b_AgeAdult vs b_AgeElderly | 0.71625 | 0.1655600 | -0.3609709 | 0.7834714 |
-| b_AgeAdult vs b_AgeMiddle_age | 0.99500 | 0.7145385 | 0.2008145 | 1.3175862 |
-| b_AgeElderly vs b_AgeMiddle_age | 0.94600 | 0.5489785 | -0.1342306 | 1.2207370 |
+| b_AgeAdult vs b_AgeElderly | 0.71850 | 0.1691467 | -0.3689277 | 0.7996556 |
+| b_AgeAdult vs b_AgeMiddle_age | 0.99875 | 0.7189990 | 0.2352132 | 1.2972628 |
+| b_AgeElderly vs b_AgeMiddle_age | 0.94375 | 0.5498523 | -0.1350445 | 1.2249016 |
