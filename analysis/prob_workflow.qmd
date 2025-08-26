@@ -52,6 +52,9 @@ library(dplyr)
 library(ggplot2)
 library(mia)
 library(tidybayes)
+library(ggsci)
+library(bayestestR)
+library(gt)
 
 # options
 options(mc.cores = 4)
@@ -247,7 +250,7 @@ p3 <- df %>%
   geom_point() +
   geom_point(
     aes(x = raw_mean, y = group),
-    data = raw_means,
+    data = raw_mean,
     shape = 3,
     size = 4,
     stroke = 1.5,
@@ -263,33 +266,81 @@ p3 <- df %>%
     caption = cap
   ) +
   theme(plot.caption = element_text(hjust = 0))
-p3  
+p3 
 ```
 
 ## 4.2. Probabilistic inference
 
 ```{r}
 #| label: table
+#| code-fold: true
+#| code-summary: Pairwise table code
 
-# Get pairwise comparisons
-comparisons <- combn(names(draws), 2, simplify = FALSE)
 
-summary_tbl <- lapply(comparisons, function(cols) {
-  g1 <- cols[1]
-  g2 <- cols[2]
-  
-  prob <- mean(draws[[g1]] > draws[[g2]])
-  log2fc_vals <- log2(draws[[g1]] / draws[[g2]])
-  
-  tibble(
-    comparison = paste(g1, "vs", g2),
-    prob_g1_gt_g2 = prob,
-    log2fc_mean = mean(log2fc_vals),
-    log2fc_lower = quantile(log2fc_vals, 0.025),
-    log2fc_upper = quantile(log2fc_vals, 0.975)
+# Get random intercepts
+re <- ranef(fit2, summary = FALSE)$group[,,"Intercept"]
+# Pairwise differences
+diff_am <- re[, "Adult"] - re[, "Middle_age"]
+diff_ae <- re[, "Adult"] - re[, "Elderly"]
+diff_em <- re[, "Elderly"] - re[, "Middle_age"]
+# Probability of direction
+pd_am <- p_direction(diff_am)
+pd_ae <- p_direction(diff_ae)
+pd_em <- p_direction(diff_em)
+# Log2fc 
+post <- as_draws_df(fit2)
+post_a <- post$b_Intercept + post$"r_group[Adult,Intercept]"
+post_m <- post$b_Intercept + post$"r_group[Middle_age,Intercept]"
+post_e <- post$b_Intercept + post$"r_group[Elderly,Intercept]"
+fc_am <- log2(post_a / post_m)
+fc_ae <- log2(post_a / post_e)
+fc_em <- log2(post_e / post_m)
+ci_am <- quantile(fc_am, probs = c(0.05, 0.95))
+ci_ae <- quantile(fc_ae, probs = c(0.05, 0.95))
+ci_em <- quantile(fc_em, probs = c(0.05, 0.95))
+# Collect into a dataframe
+tbl <- tibble(
+  comp = c("Adult - Middle_age", "Adult - Elderly", "Elderly - Middle_age"),
+  pd = c(pd_am$pd, pd_ae$pd, pd_em$pd),
+  p_like = c(pd_to_p(pd_am$pd), pd_to_p(pd_ae$pd), pd_to_p(pd_em$pd)),
+  log2fc = c(mean(fc_am), mean(fc_ae), mean(fc_em)),
+  ci_low = c(ci_am[1], ci_ae[1], ci_em[1]),
+  ci_upper = c(ci_am[2], ci_ae[2], ci_em[2])
+)
+
+
+table2 <- tbl %>%
+  mutate(ci = sprintf("[%.2f, %.2f]", ci_low, ci_upper)) %>%
+  select(comp, log2fc, ci, pd, p_like) %>%
+  gt() %>%
+  tab_header(
+    title = "Pairwise Comparisons of Groups",
+    subtitle = "Posterior probability of direction and effect size"
+  ) %>%
+  fmt_number(
+    columns = c(log2fc, pd),
+    decimals = 2
+  ) %>%
+  cols_label(
+    comp = "Comparison",
+    log2fc = "Mean Log2FC",
+    ci = "95% CI",
+    pd = "p_direction"
   )
-}) %>% bind_rows
 
-knitr::kable(summary_tbl, type = "pipe")
+library(gt)
+# ensure it's a gt_tbl
+inherits(table2, "gt_tbl")
+
+# Step 1: HTML (self-contained)
+gt::gtsave(table2, "table.html", inline_css = TRUE)
+
+# Step 2: PNG via webshot2 (try selector first, then fallback)
+tryCatch(
+  webshot2::webshot("table.html", file = "table.png", selector = ".gt_table", zoom = 2),
+  error = function(e) webshot2::webshot("table.html", file = "table.png", zoom = 2)
+)
+
 ```
+
 

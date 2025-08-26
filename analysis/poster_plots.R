@@ -14,7 +14,6 @@ set.seed(66642)
 options(mc.cores = 4)
 
 # Fetch dataset
-data("GlobalPatterns", package = "mia")
 data("peerj13075", package = "mia")
 
 # Prepare data
@@ -34,7 +33,7 @@ df <- df %>%
   mutate(group = factor(group, level = lvl))
 
 # Partial pooling model
-ppM <- brm(
+mod <- brm(
   formula = bf(
     response ~ (1 | group),
     sigma ~ (1 | group)
@@ -52,50 +51,46 @@ raw_means <- df %>%
   group_by(group) %>%
   summarise(raw_mean = mean(response))
 grid <- df %>% modelr::data_grid(group)
-means <- grid %>% add_epred_draws(ppM)
-pred <- grid %>% add_predicted_draws(ppM)
-
-# plot caption
-cap <- stringr::str_wrap(
-  paste(
-    "Fig.1: Mean Shannon index estimates for groups. Dashed vertical line is",
-    "total population mean. Point interval bars show model estimates, thicker",
-    "line represents 66% Credible Interval (CI), the thinner line represents ",
-    "95% CI. Original datapoints are displayed as dots, with model predictive",
-    "intervals. Vertical ticks are the raw means from data."
-  )
-)
+means <- grid %>% add_epred_draws(mod)
+pred <- grid %>% add_predicted_draws(mod)
 
 theme_set(theme_minimal(base_size = 16))
+# Plot1 for ppc only
 plot1 <- df %>%
   ggplot(aes(y = group, x = response)) +
   stat_interval(aes(x = .prediction), data = pred) +
+  geom_point() +
+  scale_color_brewer() +
+  labs(
+    title = "Posterior Predictive check",
+    x = "Shannon Index",
+    y = "Group",
+    caption = NULL
+  ) 
+
+# plot2 for shrinkage
+plot2 <- df %>%
+  ggplot(aes(x = response, y = group)) +
   stat_pointinterval(
     aes(x = .epred),
     data = means,
-    .width = c(0.66, 0.95),
-    position = position_nudge(y = -0.1)
+    .width = c(0.66, 0.95)
   ) +
-  geom_point() +
   geom_point(
     aes(x = raw_mean, y = group),
     data = raw_means,
-    shape = 3,
-    size = 4,
-    stroke = 1.5,
-    position = position_nudge(y = -0.1)
+    shape = 5,
+    size = 3,
+    stroke = 1.5
   ) +
-  scale_color_brewer() +
   geom_vline(xintercept = mean(df$response), linetype = "dashed") +
   labs(
-    title = "Mean Shannon index estimates",
-    subtitle = "Partial pooling model",
+    title = "Mean Shannon Index estimates",
     x = "Shannon Index",
     y = "Group",
-    caption = cap
-  ) +
-  theme(plot.caption = element_text(hjust = 0))
+    caption = NULL
+  )
 
-plot1
-ggsave("plots/group_means.png", plot1, width = 7, height = 6, dpi = 300)
-ggsave("plots/group_means.pdf", plot1, width = 7, height = 6)
+# Save the plots
+ggsave("~/Projects/prTest/analysis/plots/ppc.png", plot1, width = 7, height = 6, dpi = 300)
+ggsave("~/Projects/prTest/analysis/plots/group_means.png", plot2, width = 7, height = 6, dpi = 300)
