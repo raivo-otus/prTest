@@ -280,42 +280,41 @@ p3
 # Get random intercepts
 re <- ranef(fit2, summary = FALSE)$group[,,"Intercept"]
 # Pairwise differences
-diff_am <- re[, "Adult"] - re[, "Middle_age"]
-diff_ae <- re[, "Adult"] - re[, "Elderly"]
+diff_ma <- re[, "Middle_age"] - re[, "Adult"]
+diff_ea <- re[, "Elderly"] - re[, "Adult"]
 diff_em <- re[, "Elderly"] - re[, "Middle_age"]
 # Probability of direction
-pd_am <- p_direction(diff_am)
-pd_ae <- p_direction(diff_ae)
+pd_ma <- p_direction(diff_ma)
+pd_ea <- p_direction(diff_ea)
 pd_em <- p_direction(diff_em)
 # Log2fc 
 post <- as_draws_df(fit2)
 post_a <- post$b_Intercept + post$"r_group[Adult,Intercept]"
 post_m <- post$b_Intercept + post$"r_group[Middle_age,Intercept]"
 post_e <- post$b_Intercept + post$"r_group[Elderly,Intercept]"
-fc_am <- log2(post_a / post_m)
-fc_ae <- log2(post_a / post_e)
+fc_ma <- log2(post_m / post_a)
+fc_ea <- log2(post_e / post_a)
 fc_em <- log2(post_e / post_m)
-ci_am <- quantile(fc_am, probs = c(0.05, 0.95))
-ci_ae <- quantile(fc_ae, probs = c(0.05, 0.95))
+ci_ma <- quantile(fc_ma, probs = c(0.05, 0.95))
+ci_ea <- quantile(fc_ea, probs = c(0.05, 0.95))
 ci_em <- quantile(fc_em, probs = c(0.05, 0.95))
 # Collect into a dataframe
 tbl <- tibble(
-  comp = c("Adult - Middle_age", "Adult - Elderly", "Elderly - Middle_age"),
-  pd = c(pd_am$pd, pd_ae$pd, pd_em$pd),
-  p_like = c(pd_to_p(pd_am$pd), pd_to_p(pd_ae$pd), pd_to_p(pd_em$pd)),
-  log2fc = c(mean(fc_am), mean(fc_ae), mean(fc_em)),
-  ci_low = c(ci_am[1], ci_ae[1], ci_em[1]),
-  ci_upper = c(ci_am[2], ci_ae[2], ci_em[2])
+  comp = c("Middle_age-Adult", "Elderly-Adult", "Elderly-Middle_age"),
+  pd = c(pd_ma$pd, pd_ea$pd, pd_em$pd),
+  p_like = c(pd_to_p(pd_ma$pd), pd_to_p(pd_ea$pd), pd_to_p(pd_em$pd)),
+  log2fc = c(mean(fc_ma), mean(fc_ea), mean(fc_em)),
+  ci_low = c(ci_ma[1], ci_ea[1], ci_em[1]),
+  ci_upper = c(ci_ma[2], ci_ea[2], ci_em[2])
 )
 
 
 table2 <- tbl %>%
   mutate(ci = sprintf("[%.2f, %.2f]", ci_low, ci_upper)) %>%
-  select(comp, log2fc, ci, pd, p_like) %>%
+  select(comp, log2fc, ci, pd) %>%
   gt() %>%
   tab_header(
-    title = "Pairwise Comparisons of Groups",
-    subtitle = "Posterior probability of direction and effect size"
+    title = "**Probabilistic Comparisons of Groups**",
   ) %>%
   fmt_number(
     columns = c(log2fc, pd),
