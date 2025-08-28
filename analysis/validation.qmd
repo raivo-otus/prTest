@@ -1,0 +1,109 @@
+---
+title: "Validation of probabilistic group comparison"
+author: "Rasmus Hindström"
+date: last-modified
+format:
+    gfm:
+        toc: true
+---
+
+# False positives
+
+Taking a dataset, and randomly assigning groups should not produce meaningful
+differences. Testing methods on this random assignment dataset should
+not produce any significant results. If some are detected, that is a false
+positive. 
+
+```{r}
+#| label: setup
+#| output: false
+
+library(mia)
+library(bayestestR)
+library(brms)
+library(dplyr)
+library(ggplot2)
+library(ggsci)
+library(tidybayes)  
+
+options(mc.cores = 4)
+```
+
+```{r}
+#| label: data-prep
+#| code-fold: true
+#| code-summary: Data preparation
+
+data(Tito2024QMP, package = "mia")
+tse <- Tito2024QMP
+
+tse <- addAlpha(
+    tse,
+    assay.type = "counts",
+    index = "shannon"
+)
+
+df <- as_tibble(colData(tse))
+
+# Assign random group 
+groups <- c("A", "B", "C", "D")
+df <- df %>%
+    mutate(group = sample(groups, n(), replace = TRUE))
+
+# Check means and group size
+df %>%
+    group_by(group) %>%
+    summarise(
+        mean_shanonn = mean(shannon),
+        N = n()
+        )
+```
+
+## Fitting models
+
+As a baseline lets first do ANOVA, we should not get a significant result.
+
+```{r}
+res_aov <- aov(shannon ~ group, data = df)
+summary(res_aov)
+```
+
+Indeed, no global significance. Against theory, we still do a post-hoc test.
+
+```{r}
+TukeyHSD(res_aov)
+```
+
+Even when trying our best to get a FP we dont. 
+
+Lets try fitting a probabilistic model with `brms`.
+
+```{r}
+# Worst case, no pooling
+formula = bf(
+    shannon ~ 0 + group,
+    sigma ~ 0 + group
+)
+
+mod <- brm(
+    formula = formula,
+    data = df,
+    family = gaussian(),
+    iter = 2e3
+)
+
+# Posterior Predictive
+pp_check(mod, ndraws = 50)
+```
+
+The no partial pooling model, only has regularization from priors. 
+No shrinkage from a hierachical structure. 
+
+```{r}
+raw_means <- df %>%
+    group_by(group) %>%
+    summarise(mean = mean(shannon))
+pop_mean <- df %>%
+    summarise(mean = mean(shannon))
+
+```
