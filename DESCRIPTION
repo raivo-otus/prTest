@@ -12,9 +12,15 @@ URL: https://github.com/raivo-otus/prTest
 BugReports: https://github.com/raivo-otus/prTest/issues
 Imports:
     bayesplot,
+    bayestestR,
     brms,
     ggplot2,
+    ggsci,
     mia,
     microbenchmark,
     patchwork,
-    rstatix
+    rstatix,
+Suggests:
+    broom,
+    tidybayes,
+    gt,

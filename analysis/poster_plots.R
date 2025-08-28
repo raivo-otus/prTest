@@ -66,7 +66,7 @@ grid <- df %>% modelr::data_grid(group)
 means <- grid %>% add_epred_draws(mod)
 pred <- grid %>% add_predicted_draws(mod)
 
-theme_set(theme_linedraw(base_size = 16))
+theme_set(theme_minimal(base_size = 18))
 # Plot1 for ppc only
 plot1 <- df %>%
   ggplot(aes(y = group, x = response)) +
@@ -74,7 +74,7 @@ plot1 <- df %>%
     data = pred,
     size = 6
   ) +
-  geom_point(size = 3) +
+  geom_point(size = 2.5) +
   scale_color_brewer() +
   labs(
     title = "Posterior Predictive check",
@@ -134,12 +134,16 @@ fit_tukey <- TukeyHSD(fit_aov)
 tukey_tidy <- broom::tidy(fit_tukey) %>%
   filter(term != "null.value") %>%
   mutate(ci = sprintf("[%.2f, %.2f]", conf.low, conf.high)) %>%
-  select(Comparison = contrast, difference = estimate, `95% CI` = ci, `Adjusted p-value` = adj.p.value)
+  select(Comparison = contrast, Difference = estimate, `95% CI` = ci, `Adjusted p-value` = adj.p.value)
 
 tukey_tbl <- gt(tukey_tidy) %>%
   tab_header(title = md("**Tukey's HSD**")) %>%
   fmt_number(
-    columns = c(difference, `Adjusted p-value`),
+    columns = Difference,
+    decimals = 2
+  ) %>%
+  fmt_number(
+    columns = `Adjusted p-value`,
     decimals = 3
   )
 
@@ -188,7 +192,11 @@ pr_table <- tbl %>%
     title = md("**Probabilistic Comparisons of Groups**"),
   ) %>%
   fmt_number(
-    columns = c(diff, pd),
+    columns = diff,
+    decimals = 2
+  ) %>%
+  fmt_number(
+    columns = pd,
     decimals = 3
   ) %>%
   cols_label(

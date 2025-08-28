@@ -23,9 +23,11 @@ workflow to follow.
 
 packages <- c(
     "bayesplot",
+    "bayestestR",
     "brms",
     "dplyr",
     "ggplot2",
+    "ggsci",
     "tidybayes"
 )
 
@@ -54,7 +56,6 @@ library(mia)
 library(tidybayes)
 library(ggsci)
 library(bayestestR)
-library(gt)
 
 # options
 options(mc.cores = 4)
@@ -151,7 +152,7 @@ fit2 <- update(
     fit2,
     algorithm = "sampling", # "meanfield" for VI 
     control = list(adapt_delta = 0.98),
-    iter = 2e4
+    iter = 2e4 # If using VI up iter to >2e5
 )
 ```
 
@@ -308,7 +309,6 @@ tbl <- tibble(
   ci_upper = c(ci_ma[2], ci_ea[2], ci_em[2])
 )
 
-
 table2 <- tbl %>%
   mutate(ci = sprintf("[%.2f, %.2f]", ci_low, ci_upper)) %>%
   select(comp, log2fc, ci, pd) %>%
@@ -326,20 +326,6 @@ table2 <- tbl %>%
     ci = "95% CI",
     pd = "p_direction"
   )
-
-library(gt)
-# ensure it's a gt_tbl
-inherits(table2, "gt_tbl")
-
-# Step 1: HTML (self-contained)
-gt::gtsave(table2, "table.html", inline_css = TRUE)
-
-# Step 2: PNG via webshot2 (try selector first, then fallback)
-tryCatch(
-  webshot2::webshot("table.html", file = "table.png", selector = ".gt_table", zoom = 2),
-  error = function(e) webshot2::webshot("table.html", file = "table.png", zoom = 2)
-)
-
 ```
 
 

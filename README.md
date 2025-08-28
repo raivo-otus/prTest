@@ -4,12 +4,18 @@
 <!-- badges: start -->
 <!-- badges: end -->
 
-This is a research compendium. This research project investigates
+This is a research compendium. This project investigates
 the use of probabilisitc alternatives to classical tests
-in the context of microbiome research. 
+in the context of microbiome research in population study scale. 
 
-The aim is to bring awareness and showcase the use of
-probabilistic methods in univariate two-sample and multi-group comparisons.
+The aims are to benchmark and test probabilistic alternative against classical
+methods. Ensuring applicability to the scenarios that arise in the field. 
+
+If found suitable, the end goal is to develop and package common workflows
+into R/Bioconductor to help with widespread adoption and use. 
+
+Raising awareness of the benefits and use of probabilistic methods can unlock 
+powerful tools for researchers. 
 
 # Problem space
 
