@@ -2,8 +2,8 @@ Package: prTest
 Title: Research compendium for probabilistic alternatives
 Version: 0.0.0.9000
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
+    person("Rasmus", "Hindstörm", , "rasmus.hindstrom@utu.fi", role = c("aut", "cre"))
+Description: This is a research compendium. Documenting the investigation of probabilistic alternatives to classical methods for population and microbiome analysis.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -14,12 +14,13 @@ Imports:
     bayesplot,
     bayestestR,
     brms,
+    dplyr,
     ggplot2,
     ggsci,
     mia,
     microbenchmark,
     patchwork,
-    rstatix,
+    rstatix
 Suggests:
     broom,
     tidybayes,

@@ -46,7 +46,7 @@ tse <- addAlpha(
 df <- as_tibble(colData(tse))
 
 # Assign random group 
-groups <- c("A", "B", "C", "D")
+groups <- c("A", "B", "C", "D", "E")
 df <- df %>%
     mutate(group = sample(groups, n(), replace = TRUE))
 
@@ -85,11 +85,17 @@ formula = bf(
     sigma ~ 0 + group
 )
 
+formula2 = bf(
+    shannon ~ (1|group),
+    sigma ~ (1|group)
+)
+
 mod <- brm(
-    formula = formula,
+    formula = formula2,
     data = df,
     family = gaussian(),
-    iter = 2e3
+    iter = 2e4,
+    control = list(adapt_delta = 0.98)
 )
 
 # Posterior Predictive
@@ -105,5 +111,71 @@ raw_means <- df %>%
     summarise(mean = mean(shannon))
 pop_mean <- df %>%
     summarise(mean = mean(shannon))
+grid <- df %>% modelr::data_grid(group)
+means <- grid %>%
+    add_epred_draws(mod) %>%
+    select(group, .draw, .epred)
+preds <- grid %>%
+    add_predicted_draws(mod) %>%
+    select(group, .draw, .prediction)
 
+plot1 <- df %>%
+    ggplot(aes(x = shannon, y = group)) +
+    stat_pointinterval(
+        aes(x = .epred, y = group),
+        data = means,
+        .width = c(0.66, 0.95),
+     ) +
+    geom_point(
+        aes(x = mean, y = group),
+        data = raw_means,
+        shape = 5,
+        size = 6) +
+    geom_vline(xintercept = pop_mean$mean, linetype = "dashed") +
+    scale_color_brewer() +
+    theme_minimal(base_size = 16) +
+    labs(
+        title = "Estimated group means",
+        subtitle = "no pooling model",
+        x = "Shannon Index",
+        y = "Group",
+        caption = "Fig1. Empty diamond indicates raw group mean. Point interval shows mean estimate with 0.66 and 0.95 CrI as thickened line."
+    )
+
+plot1
+```
+
+```{r}
+## Helper function to gather summary table
+pr_summary <- function(epreds, group) {
+    names <- unique(epreds$group)
+    cmbs <- t(combn(names, 2, simplify = TRUE))
+    res <- tibble(
+        Comparison = character(),
+        Difference = double(),
+        CrI.low = double(),
+        CrI.high = double(),
+        Pr = double()
+    )
+    for (i in 1:nrow(cmbs)) {
+        comp <- paste(cmbs[i, 1], cmbs[i, 2], sep = " - ")
+        draws1 <- epreds %>%
+            filter(group %in% cmbs[i,1])
+        draws2 <- epreds %>%
+            filter(group %in% cmbs[i,2])
+        diff <- draws1$.epred - draws2$.epred
+        cri <- quantile(diff, probs = c(0.05, 0.95))
+        res <- res %>%
+            add_row(
+                Comparison = comp,
+                Difference = mean(diff),
+                CrI.low = cri[1],
+                CrI.high = cri[2], 
+                Pr = bayestestR::p_direction(diff)$pd
+            )
+    }
+    return(res)
+}
+
+knitr::kable(pr_summary(means, group), type = "pipes")
 ```
